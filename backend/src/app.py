@@ -60,6 +60,14 @@ async def json_uplift(context: bytes = File(''),
         if not jsondoc:
             if jsonurl:
                 jsondoc = await _remote_fetch(jsonurl)
+                if jsondoc is False:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={
+                            "type": "FetchForbidden",
+                            "msg": "Fetch is forbidden from the requested URL",
+                        }
+                    )
             else:
                 raise HTTPException(
                     status_code=422,
