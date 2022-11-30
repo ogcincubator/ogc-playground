@@ -11,7 +11,7 @@
         <v-select
             v-model="yamlContext.type"
             label="Source"
-            :items="inputSources"
+            :items="filteredInputSources"
         ></v-select>
         <codemirror
             v-if="yamlContext.type == 'content'"
@@ -28,6 +28,8 @@
             v-model="yamlContext.url"
             label="YAML context definition URL"
             placeholder="https://..."
+            :hint="remoteFetchHint"
+            persistent-hint
         ></v-text-field>
         <v-file-input
             v-if="yamlContext.type == 'file'"
@@ -40,7 +42,7 @@
         <v-select
             v-model="jsonContent.type"
             label="Source"
-            :items="inputSources"
+            :items="filteredInputSources"
         ></v-select>
         <codemirror
             v-if="jsonContent.type == 'content'"
@@ -56,6 +58,8 @@
             v-model="jsonContent.url"
             label="JSON document URL"
             placeholder="https://..."
+            :hint="remoteFetchHint"
+            persistent-hint
         ></v-text-field>
         <v-file-input
             v-if="jsonContent.type == 'file'"
@@ -145,6 +149,7 @@ export default {
     baseUri: '',
     outputText: '',
     outputError: null,
+    remoteFetchRegex: null,
   }),
   mounted() {
     this.yamlContext.type = localStorage.getItem("ogcPlayground.lastContextType") || 'content';
@@ -155,18 +160,40 @@ export default {
     this.jsonContent.url = localStorage.getItem("ogcPlayground.lastJsonUrl") || '';
     this.baseUri = localStorage.getItem("ogcPlayground.lastBaseUri") || '';
     this.outputFormat = localStorage.getItem("ogcPlayground.lastOutputFormat") || 'ttl';
+    axios.get(`${BACKEND_URL}/remote-fetch`)
+        .then(resp => {
+          this.remoteFetchRegex = resp.data.enabled ? resp.data.regex : false;
+        })
+        .catch(err => {
+          console.log('Error obtaining remote fetch configuration', err);
+        });
   },
   computed: {
     canSubmit() {
+      let result = true;
+      const remoteRegex = this.remoteFetchRegex ? new RegExp(this.remoteFetchRegex) : null;
       switch (this.jsonContent.type) {
         case 'content':
-          return this.jsonContent.content && !!this.jsonContent.content.trim();
+          result &= this.jsonContent.content && !!this.jsonContent.content.trim();
+          break;
         case 'url':
-          return !!this.jsonContent.url;
+          result &= !!this.jsonContent.url && !remoteRegex || !!this.jsonContent.url.match(remoteRegex);
+          break;
         case 'file':
           return !!this.jsonContent.file.length;
       }
-      return true;
+      if (this.yamlContext.type == 'url' && remoteRegex) {
+        result &= !this.yamlContext.url || !!this.yamlContext.url.match(remoteRegex);
+      }
+      return result;
+    },
+    filteredInputSources() {
+      return this.remoteFetchRegex === false
+          ? this.inputSources.filter(i => i.value != 'url')
+          : this.inputSources;
+    },
+    remoteFetchHint() {
+      return this.remoteFetchRegex ? `Allowed URLs: ${this.remoteFetchRegex}` : null;
     },
   },
   methods: {

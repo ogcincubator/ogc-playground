@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import re
+from ctypes.wintypes import RECT
+
 import requests
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, File, Form, Response
@@ -41,6 +43,14 @@ async def _remote_fetch(url: str) -> bytes | bool:
     r = requests.get(url)
     r.raise_for_status()
     return r.content
+
+
+@app.get('/remote-fetch')
+async def remote_fetch():
+    r = {'enabled': REMOTE_FETCH_ALLOWED is not None}
+    if REMOTE_FETCH_ALLOWED:
+        r['regex'] = REMOTE_FETCH_ALLOWED.pattern
+    return r
 
 
 @app.post("/json-uplift")
