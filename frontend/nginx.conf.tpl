@@ -8,8 +8,8 @@ http {
         root  /usr/share/nginx/html;
         include /etc/nginx/mime.types;
 
-        location / {
-            try_files $uri /index.html;
+        location ${VUE_APP_SERVE_PATH} {
+            try_files $uri ${VUE_APP_SERVE_PATH}index.html;
         }
     }
 }
