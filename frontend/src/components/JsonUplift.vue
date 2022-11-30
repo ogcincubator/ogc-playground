@@ -36,6 +36,24 @@
             v-model="yamlContext.file"
             label="YAML context definition file"
         ></v-file-input>
+        <div class="text-center">
+          <v-btn
+            prepend-icon="mdi-open-in-new"
+            href="https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context"
+            target="_blank"
+            class="my-2 mx-1"
+          >
+            Context definition sample
+          </v-btn>
+          <v-btn
+            prepend-icon="mdi-open-in-new"
+            href="https://opengeospatial.github.io/ogc-na-tools/reference/ogc/na/ingest_json/"
+            target="_blank"
+            class="my-2 mx-1"
+          >
+            ingest_json.py documentation
+          </v-btn>
+        </div>
       </v-col>
       <v-col cols="12" md="6">
         <div>JSON content</div>
