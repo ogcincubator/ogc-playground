@@ -23,7 +23,7 @@ else:
     REMOTE_FETCH_ALLOWED = None
     logger.info('Remote fetch disabled')
 
-app = FastAPI()
+app = FastAPI(root_path=os.environ.get('BACKEND_ROOT_PATH', ''))
 
 app.add_middleware(
     CORSMiddleware,
