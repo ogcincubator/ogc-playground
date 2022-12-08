@@ -45,21 +45,48 @@ async def _remote_fetch(url: str) -> bytes | bool:
     return r.content
 
 
-@app.get('/remote-fetch')
+@app.get('/remote-fetch',
+         response_description='an object with a boolean `enabled` property and, optionally, a `regex`' \
+                              'property to match against potential enpoints',
+         )
 async def remote_fetch():
+    """
+    Provides information about whether remote fetching of resources (e.g.
+    external JSON files) is enabled and, if so, what endpoints are allowed (using
+    a regular expression).
+    :return: an object with a boolean `enabled` property and, optionally, a `regex`
+      property to match against potential enpoints
+    """
     r = {'enabled': REMOTE_FETCH_ALLOWED is not None}
     if REMOTE_FETCH_ALLOWED:
         r['regex'] = REMOTE_FETCH_ALLOWED.pattern
     return r
 
 
-@app.post("/json-uplift")
-async def json_uplift(context: bytes = File(''),
-                      contexturl: str | None = Form(None),
-                      jsondoc: bytes = File('', alias='json'),
-                      jsonurl: str | None = Form(None),
-                      output: str | None = Form(None),
-                      base: str | None = Form(None)):
+@app.post("/json-uplift", response_description='The output textual document depending on the selected output format')
+async def json_uplift(context: bytes = File('', description='YAML contents for the uplift context definition'),
+                      contexturl: str | None = Form(None, description='URL for the YAML context definition'),
+                      jsondoc: bytes = File('', alias='json', description='JSON textual source document'),
+                      jsonurl: str | None = Form(None, description='URL for the JSON source document'),
+                      output: str | None = Form(None, description=(
+                              'Type of output: `ttl` for Turtle or `expanded` for expanded JSON-LD. Otherwise,'
+                              ' the transformed JSON file will be returned.')),
+                      base: str | None = Form(None, description='Base URI for relative URIs')):
+    """
+    Performs JSON-uplift processes. The YAML context definition and/or the
+    JSON source file can be provided either as textual content or as URLs
+    that will be fetched (provided that remote fetching is enabled and the
+    URLs match the allowed endpoints).
+
+    :param context: YAML contents for the uplift context definition
+    :param contexturl: URL for the YAML context definition
+    :param jsondoc: JSON textual source document
+    :param jsonurl: URL for the JSON source document
+    :param output: Type of output: `ttl` for Turtle or `expanded` for expanded JSON-LD. Otherwise,
+      the transformed JSON file will be returned.
+    :param base: Base URI for relative URIs
+    :return: The output textual document depending on the selected output format
+    """
     try:
         if isinstance(context, bytes):
             context = context.decode('utf-8')
