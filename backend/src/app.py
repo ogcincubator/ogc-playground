@@ -3,12 +3,14 @@ import logging
 import os
 import re
 from ctypes.wintypes import RECT
+from datetime import datetime
 
 import requests
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from ogc.na import ingest_json
+from ogc.na.provenance import ProvenanceMetadata, FileProvenanceMetadata
 
 logging.config.fileConfig(Path(__file__).parent / 'logging.conf', disable_existing_loggers=False)
 logger = logging.getLogger('ogc_playground')
@@ -71,7 +73,8 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                       output: str | None = Form(None, description=(
                               'Type of output: `ttl` for Turtle or `expanded` for expanded JSON-LD. Otherwise,'
                               ' the transformed JSON file will be returned.')),
-                      base: str | None = Form(None, description='Base URI for relative URIs')):
+                      base: str | None = Form(None, description='Base URI for relative URIs'),
+                      provenance: bool = Form(True, description='Add provenance metadata')):
     """
     Performs JSON-uplift processes. The YAML context definition and/or the
     JSON source file can be provided either as textual content or as URLs
@@ -88,6 +91,7 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
     :return: The output textual document depending on the selected output format
     """
     try:
+        start = datetime.now()
         if isinstance(context, bytes):
             context = context.decode('utf-8')
         if not context and contexturl:
@@ -115,9 +119,23 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                 )
         jsondoc = json.loads(jsondoc)
         g, expanded, uplifted = ingest_json.generate_graph(jsondoc, context, base)
+
+        prov_metadata = ProvenanceMetadata(
+            context=FileProvenanceMetadata(uri=contexturl),
+            doc=FileProvenanceMetadata(uri=jsonurl),
+            start=start,
+            end=datetime.now(),
+        )
+
         if output == 'ttl':
-            return Response(g.serialize(format='ttl'), media_type="text/turtle")
+            if provenance:
+                prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='text/turtle')
+                ingest_json.generate_provenance(g, prov_metadata)
+            return Response(g.serialize(format='ttl'), media_type='text/turtle')
         elif output == 'expanded':
+            if provenance:
+                prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='application/ld+json')
+                ingest_json.add_jsonld_provenance(expanded, prov_metadata)
             return expanded
         else:
             return uplifted
