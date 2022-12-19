@@ -126,7 +126,7 @@ import {yaml} from '@codemirror/legacy-modes/mode/yaml';
 import {json as cmJson} from '@codemirror/lang-json';
 import axios from 'axios';
 
-const BACKEND_URL = process.env.VUE_APP_BACKEND_URL;
+const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 
 export default {
   name: 'JsonUplift',
