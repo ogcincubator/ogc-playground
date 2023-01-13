@@ -1,8 +1,22 @@
 <template>
   <v-container>
-    <v-row>
-      <v-col>
-        <h1 class="text-center">JSON-LD Uplift</h1>
+    <v-row align="center">
+      <v-col cols="12" md="2">
+        <a href="https://www.ogc.org" target="_blank">
+          <v-img
+              id="ogc-logo"
+              :src="logoUrl"
+              alt="Open Geospatial Consortium Logo"
+              title="Open Geospatial Consortium"
+              max-height="90"
+
+          />
+        </a>
+      </v-col>
+      <v-col cols="12" md="8">
+        <h1 class="text-center" id="main-header">
+          JSON-LD Uplift
+        </h1>
       </v-col>
     </v-row>
     <v-row>
@@ -151,6 +165,8 @@ import {json as cmJson} from '@codemirror/lang-json';
 import axios from 'axios';
 import examples from '@/assets/json-uplift-examples.json';
 
+import logoUrl from '@/assets/logo.png';
+
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 
 export default {
@@ -160,6 +176,7 @@ export default {
   },
   data: () => ({
     processing: false,
+    logoUrl,
     inputSources: [
       {value: 'content', title: 'Text content'},
       {value: 'file', title: 'File'},
