@@ -2,7 +2,7 @@
   <v-container>
     <v-row>
       <v-col>
-        <h1 class="text-center">JSON Uplift</h1>
+        <h1 class="text-center">JSON-LD Uplift</h1>
       </v-col>
     </v-row>
     <v-row>
@@ -33,7 +33,7 @@
             <v-list-item
                 v-for="(helpItem, index) in helpItems"
                 :key="index"
-                :to="helpItem.link"
+                :href="helpItem.link"
                 target="_blank"
             >
               <v-list-item-title>
@@ -121,7 +121,7 @@
             label="Base URI"
         >
         </v-text-field>
-        <v-btn @click.prevent="uplift" :disabled="!canSubmit">JSON Uplift</v-btn>
+        <v-btn @click.prevent="uplift" :disabled="!canSubmit" :loading="processing">JSON Uplift</v-btn>
       </v-col>
     </v-row>
     <v-row>
@@ -135,6 +135,8 @@
             class="output"
             v-model="outputText"
             :rows="10"
+            :disabled="processing"
+            :class="{ 'fade-loading': processing }"
         ></v-textarea>
       </v-col>
     </v-row>
@@ -157,6 +159,7 @@ export default {
     Codemirror,
   },
   data: () => ({
+    processing: false,
     inputSources: [
       {value: 'content', title: 'Text content'},
       {value: 'file', title: 'File'},
@@ -200,6 +203,14 @@ export default {
       {
         title: 'Sample context definition',
         link: 'https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context'
+      },
+      {
+        title: 'JSON-LD 1.1 specification',
+        link: 'https://www.w3.org/TR/json-ld11/'
+      },
+      {
+        title: 'JSON-LD Playground',
+        link: 'https://json-ld.org/playground/'
       },
     ]
   }),
@@ -308,6 +319,7 @@ export default {
 
       formData.append('output', this.outputFormat);
       formData.append('base', this.baseUri);
+      this.processing = true;
       axios.post(`${BACKEND_URL}/json-uplift`, formData)
           .then(res => {
             this.outputText = typeof res.data === 'object' ? JSON.stringify(res.data, null, 2) : res.data;
@@ -326,8 +338,14 @@ export default {
             } else {
               this.outputError = err;
             }
-          });
+          })
+          .finally(() => this.processing = false);
     },
   },
 }
 </script>
+<style>
+.fade-loading {
+  opacity: 0.5;
+}
+</style>
