@@ -6,6 +6,46 @@
       </v-col>
     </v-row>
     <v-row>
+      <v-col cols="12" class="text-right">
+        <v-menu>
+          <template v-slot:activator="{ props }">
+            <v-btn color="primary" v-bind="props" append-icon="mdi-menu-down" class="mr-2">
+              Examples
+            </v-btn>
+          </template>
+          <v-list>
+            <v-list-item
+                v-for="(example, index) in filteredExamples"
+                :key="index"
+                @click="loadExample(example)"
+            >
+              <v-list-item-title>{{ example.title }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+        <v-menu>
+          <template v-slot:activator="{ props }">
+            <v-btn color="primary" v-bind="props" append-icon="mdi-menu-down">
+              Help links
+            </v-btn>
+          </template>
+          <v-list>
+            <v-list-item
+                v-for="(helpItem, index) in helpItems"
+                :key="index"
+                :to="helpItem.link"
+                target="_blank"
+            >
+              <v-list-item-title>
+                {{ helpItem.title }}
+                <v-icon>mdi-open-in-new</v-icon>
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </v-col>
+    </v-row>
+    <v-row>
       <v-col cols="12" md="6">
         <div>Context definition (YAML)</div>
         <v-select
@@ -36,24 +76,6 @@
             v-model="yamlContext.file"
             label="YAML context definition file"
         ></v-file-input>
-        <div class="text-center">
-          <v-btn
-            prepend-icon="mdi-open-in-new"
-            href="https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context"
-            target="_blank"
-            class="my-2 mx-1"
-          >
-            Context definition sample
-          </v-btn>
-          <v-btn
-            prepend-icon="mdi-open-in-new"
-            href="https://opengeospatial.github.io/ogc-na-tools/reference/ogc/na/ingest_json/"
-            target="_blank"
-            class="my-2 mx-1"
-          >
-            ingest_json.py documentation
-          </v-btn>
-        </div>
       </v-col>
       <v-col cols="12" md="6">
         <div>JSON content</div>
@@ -125,6 +147,7 @@ import {StreamLanguage} from '@codemirror/language';
 import {yaml} from '@codemirror/legacy-modes/mode/yaml';
 import {json as cmJson} from '@codemirror/lang-json';
 import axios from 'axios';
+import examples from '@/assets/json-uplift-examples.json';
 
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 
@@ -168,6 +191,17 @@ export default {
     outputText: '',
     outputError: null,
     remoteFetchRegex: null,
+    examples,
+    helpItems: [
+      {
+        title: 'ingest_json.py documentation',
+        link: 'https://opengeospatial.github.io/ogc-na-tools/reference/ogc/na/ingest_json/'
+      },
+      {
+        title: 'Sample context definition',
+        link: 'https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context'
+      },
+    ]
   }),
   mounted() {
     this.yamlContext.type = localStorage.getItem("ogcPlayground.lastContextType") || 'content';
@@ -213,8 +247,30 @@ export default {
     remoteFetchHint() {
       return this.remoteFetchRegex ? `Allowed URLs: ${this.remoteFetchRegex}` : null;
     },
+    filteredExamples() {
+      return this.remoteFetchRegex === false
+          ? this.examples.filter(e => !e.contextUrl && !e.contentUrl)
+          : this.examples;
+    },
   },
   methods: {
+    loadExample(example) {
+      if (example.contextUrl) {
+        this.yamlContext.url = example.contextUrl;
+        this.yamlContext.type = 'url';
+      } else {
+        this.yamlContext.content = example.context;
+        this.yamlContext.type = 'content';
+      }
+      if (example.contentUrl) {
+        this.jsonContent.url = example.contentUrl;
+        this.jsonContent.type = 'url';
+      } else {
+        this.jsonContent.content = example.content;
+        this.jsonContent.type = 'content';
+      }
+      this.baseUri = example.baseUri || '';
+    },
     uplift() {
       const formData = new FormData();
       switch (this.yamlContext.type) {
