@@ -90,6 +90,20 @@
             v-model="yamlContext.file"
             label="YAML context definition file"
         ></v-file-input>
+        <div class="mt-2">
+          <v-alert v-if="remoteContextFetchType == 'disabled'" type="warning">
+            Remote context URL imports are disabled.
+          </v-alert>
+          <v-alert v-if="remoteContextFetchType == 'open'" type="info">
+            Remote context URL imports are enabled.
+          </v-alert>
+          <v-alert v-if="remoteContextFetchType == 'whitelist'" type="info">
+            Remote context URL imports are limited to the following patterns:
+            <ul>
+              <li class="ml-6" v-for="(r, index) in remoteContextFetchWhitelist" :key="index"><code>{{ r }}</code></li>
+            </ul>
+          </v-alert>
+        </div>
       </v-col>
       <v-col cols="12" md="6">
         <div>JSON content</div>
@@ -229,7 +243,9 @@ export default {
         title: 'JSON-LD Playground',
         link: 'https://json-ld.org/playground/'
       },
-    ]
+    ],
+    remoteContextFetchType: null,
+    remoteContextFetchWhitelist: null,
   }),
   mounted() {
     this.yamlContext.type = localStorage.getItem("ogcPlayground.lastContextType") || 'content';
@@ -243,6 +259,10 @@ export default {
     axios.get(`${BACKEND_URL}/remote-fetch`)
         .then(resp => {
           this.remoteFetchRegex = resp.data.enabled ? resp.data.regex : false;
+          if (resp.data.context) {
+            this.remoteContextFetchType = resp.data.context.type;
+            this.remoteContextFetchWhitelist = resp.data.context.whitelist;
+          }
         })
         .catch(err => {
           console.log('Error obtaining remote fetch configuration', err);
