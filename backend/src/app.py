@@ -25,6 +25,21 @@ else:
     REMOTE_FETCH_ALLOWED = None
     logger.info('Remote fetch disabled')
 
+rcfwl = os.environ.get('REMOTE_CONTEXT_FETCH_WHITELIST', '').strip()
+if rcfwl:
+    REMOTE_CONTEXT_FETCH_WHITELIST = json.loads(rcfwl)
+    if isinstance(REMOTE_CONTEXT_FETCH_WHITELIST, list):
+        REMOTE_CONTEXT_FETCH_WHITELIST = [w for w in REMOTE_CONTEXT_FETCH_WHITELIST if w]
+else:
+    REMOTE_CONTEXT_FETCH_WHITELIST = None
+if REMOTE_CONTEXT_FETCH_WHITELIST is None:
+    logger.warning('Remote context fetch allowed for any URL')
+elif not REMOTE_CONTEXT_FETCH_WHITELIST:
+    REMOTE_CONTEXT_FETCH_WHITELIST = False
+    logger.info('Remote context fetch disabled')
+else:
+    logger.info('Remote context fetch whitelist: %s', str(REMOTE_CONTEXT_FETCH_WHITELIST))
+
 app = FastAPI(root_path=os.environ.get('BACKEND_ROOT_PATH', ''))
 
 app.add_middleware(
@@ -47,6 +62,13 @@ async def _remote_fetch(url: str) -> bytes | bool:
     return r.content
 
 
+@app.get("/")
+async def index():
+    return {
+        'name': 'OGC Playground backend'
+    }
+
+
 @app.get('/remote-fetch',
          response_description='an object with a boolean `enabled` property and, optionally, a `regex`' \
                               'property to match against potential enpoints',
@@ -62,6 +84,14 @@ async def remote_fetch():
     r = {'enabled': REMOTE_FETCH_ALLOWED is not None}
     if REMOTE_FETCH_ALLOWED:
         r['regex'] = REMOTE_FETCH_ALLOWED.pattern
+    r['context'] = {}
+    if REMOTE_CONTEXT_FETCH_WHITELIST is None:
+        r['context']['type'] = 'open'
+    elif not REMOTE_CONTEXT_FETCH_WHITELIST:
+        r['context']['type'] = 'disabled'
+    else:
+        r['context']['type'] = 'whitelist'
+        r['context']['whitelist'] = REMOTE_CONTEXT_FETCH_WHITELIST
     return r
 
 
@@ -118,13 +148,14 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                     }
                 )
         jsondoc = json.loads(jsondoc)
-        g, expanded, uplifted = ingest_json.generate_graph(jsondoc, context, base)
+        g, expanded, uplifted = ingest_json.generate_graph(jsondoc, context, base,
+                                                           fetch_url_whitelist=REMOTE_CONTEXT_FETCH_WHITELIST)
 
         prov_metadata = ProvenanceMetadata(
-            context=FileProvenanceMetadata(uri=contexturl),
-            doc=FileProvenanceMetadata(uri=jsonurl),
+            used=[FileProvenanceMetadata(uri=contexturl, mime_type='text/yaml', label="Context definition"),
+                  FileProvenanceMetadata(uri=jsonurl, mime_type='application/json', label="JSON document")],
             start=start,
-            end=datetime.now(),
+            end_auto=True,
         )
 
         if output == 'ttl':
