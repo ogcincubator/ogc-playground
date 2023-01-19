@@ -228,20 +228,24 @@ export default {
     examples,
     helpItems: [
       {
+        title: 'JSON-LD uplift tutorial',
+        link: 'https://opengeospatial.github.io/ogc-na-tools/tutorials/#how-to-create-a-json-ld-uplift-context-definition',
+      },
+      {
         title: 'ingest_json.py documentation',
-        link: 'https://opengeospatial.github.io/ogc-na-tools/reference/ogc/na/ingest_json/'
+        link: 'https://opengeospatial.github.io/ogc-na-tools/reference/ogc/na/ingest_json/',
       },
       {
         title: 'Sample context definition',
-        link: 'https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context'
+        link: 'https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context',
       },
       {
         title: 'JSON-LD 1.1 specification',
-        link: 'https://www.w3.org/TR/json-ld11/'
+        link: 'https://www.w3.org/TR/json-ld11/',
       },
       {
         title: 'JSON-LD Playground',
-        link: 'https://json-ld.org/playground/'
+        link: 'https://json-ld.org/playground/',
       },
     ],
     remoteContextFetchType: null,
