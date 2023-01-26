@@ -57,7 +57,9 @@ async def _remote_fetch(url: str) -> bytes | bool:
         logger.warning('Remote fetch not allowed for %s', url)
         return False
     logger.info('Remote fetching %s', url)
-    r = requests.get(url)
+    r = requests.get(url, headers={
+        'Accept': 'application/json, application/ld+json;q=0.9, */*;q=0.8'
+    })
     r.raise_for_status()
     return r.content
 
