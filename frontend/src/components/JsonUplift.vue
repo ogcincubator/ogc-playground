@@ -138,34 +138,49 @@
     </v-row>
     <v-row justify="center">
       <v-col class="text-center" xs="6" sm="4">
-        <v-select
-            v-model="outputFormat"
-            label="Output format"
-            :items="outputFormats"
-        >
-        </v-select>
-        <v-text-field
-            v-model="baseUri"
-            label="Base URI"
-        >
-        </v-text-field>
-        <v-btn @click.prevent="uplift" :disabled="!canSubmit" :loading="processing">JSON Uplift</v-btn>
+        <v-btn @click.prevent="uplift" :disabled="!canSubmit" :loading="processing" prepend-icon="mdi-play">JSON Uplift</v-btn>
       </v-col>
     </v-row>
-    <v-row>
+    <v-row v-if="result" class="result">
       <v-col>
-        <div v-if="outputError" class="text-red-lighten-1">
-          {{ outputError }}
-        </div>
-        <v-textarea
-            variant="filled"
-            v-if="outputText"
-            class="output"
-            v-model="outputText"
-            :rows="10"
-            :disabled="processing"
-            :class="{ 'fade-loading': processing }"
-        ></v-textarea>
+        <v-row no-gutters>
+          <v-col cols="12" v-if="resultError">
+            <div class="text-red-lighten-1">
+              {{ resultError }}
+            </div>
+          </v-col>
+        </v-row>
+        <v-row no-gutters>
+          <v-col sm="9" md="6" v-if="!resultError">
+            <v-select
+                v-model="resultFormat"
+                label="Output format"
+                :items="resultFormats"
+                :disabled="processing"
+            >
+            </v-select>
+          </v-col>
+          <v-col sm="3" md="6" class="text-right">
+            <v-tooltip :text="copyToClipboardTooltip">
+              <template v-slot:activator="{ props }">
+                <v-btn v-bind="props" @click.prevent="copyToClipboard" :icon="copyToClipboardIcon"></v-btn>
+              </template>
+            </v-tooltip>
+          </v-col>
+        </v-row>
+        <v-row no-gutters>
+          <v-col v-if="!resultError">
+            <v-textarea
+                ref="resultText"
+                variant="filled"
+                class="output"
+                v-model="result[resultFormat]"
+                :rows="15"
+                :disabled="processing"
+                :class="{ 'fade-loading': processing }"
+            ></v-textarea>
+          </v-col>
+        </v-row>
       </v-col>
     </v-row>
   </v-container>
@@ -177,6 +192,7 @@ import {StreamLanguage} from '@codemirror/language';
 import {yaml} from '@codemirror/legacy-modes/mode/yaml';
 import {json as cmJson} from '@codemirror/lang-json';
 import axios from 'axios';
+import jszip from 'jszip';
 import examples from '@/assets/json-uplift-examples.json';
 
 import logoUrl from '@/assets/logo.png';
@@ -215,17 +231,19 @@ export default {
     jsonExtensions: [
       cmJson(),
     ],
-    outputFormats: [
-      {value: 'ttl', title: 'Turtle'},
-      {value: 'json', title: 'Uplifted JSON-LD'},
-      {value: 'expanded', title: 'Expanded JSON-LD'},
+    resultFormats: [
+      {value: 'ttl', title: 'Turtle', fn: 'ttl.ttl'},
+      {value: 'json', title: 'Uplifted JSON-LD', fn: 'uplifted.jsonld'},
+      {value: 'expanded', title: 'Expanded JSON-LD', fn: 'expanded.jsonld'},
     ],
-    outputFormat: 'ttl',
-    baseUri: '',
-    outputText: '',
-    outputError: null,
+    resultFormat: 'ttl',
+    result: null,
+    resultError: null,
     remoteFetchRegex: null,
     examples,
+    copyToClipboardIcon: 'mdi-content-copy',
+    copyToClipboardTimeout: null,
+    copyToClipboardTooltip: 'Copy result to clipboard',
     helpItems: [
       {
         title: 'JSON-LD uplift tutorial',
@@ -258,8 +276,7 @@ export default {
     this.jsonContent.type = localStorage.getItem("ogcPlayground.lastJsonType") || 'content';
     this.jsonContent.content = localStorage.getItem("ogcPlayground.lastJson") || '';
     this.jsonContent.url = localStorage.getItem("ogcPlayground.lastJsonUrl") || '';
-    this.baseUri = localStorage.getItem("ogcPlayground.lastBaseUri") || '';
-    this.outputFormat = localStorage.getItem("ogcPlayground.lastOutputFormat") || 'ttl';
+    this.resultFormat = localStorage.getItem("ogcPlayground.lastOutputFormat") || 'ttl';
     axios.get(`${BACKEND_URL}/remote-fetch`)
         .then(resp => {
           this.remoteFetchRegex = resp.data.enabled ? resp.data.regex : false;
@@ -321,7 +338,6 @@ export default {
         this.jsonContent.content = example.content;
         this.jsonContent.type = 'content';
       }
-      this.baseUri = example.baseUri || '';
     },
     uplift() {
       const formData = new FormData();
@@ -355,32 +371,42 @@ export default {
 
       localStorage.setItem("ogcPlayground.lastContextType", this.yamlContext.type);
       localStorage.setItem("ogcPlayground.lastJsonType", this.jsonContent.type);
-      localStorage.setItem("ogcPlayground.lastBaseUri", this.baseUri);
-      localStorage.setItem("ogcPlayground.lastOutputFormat", this.outputFormat);
+      localStorage.setItem("ogcPlayground.lastOutputFormat", this.resultFormat);
 
-      formData.append('output', this.outputFormat);
-      formData.append('base', this.baseUri);
+      formData.append('output', 'all');
       this.processing = true;
-      axios.post(`${BACKEND_URL}/json-uplift`, formData)
-          .then(res => {
-            this.outputText = typeof res.data === 'object' ? JSON.stringify(res.data, null, 2) : res.data;
-            this.outputError = null;
+      this.resultError = null;
+      axios.post(`${BACKEND_URL}/json-uplift`, formData, {
+            responseType: 'blob'
           })
+          .then(res => jszip.loadAsync(res.data))
+          .then(zipfile => Promise.all(this.resultFormats.map(async fmt => [fmt.value, await zipfile.file(fmt.fn).async('string')])))
+          .then(r => this.result = Object.fromEntries(r))
           .catch(err => {
             console.log(err);
-            this.outputText = null;
+            this.result = null;
             const detail = err.response?.data?.detail;
             if (detail.msg) {
-              this.outputError = detail.msg;
+              this.resultError = detail.msg;
               if (detail.cause) {
                 const msg = detail.cause.split('|', 2)[1];
-                this.outputError += ': ' + msg;
+                this.resultError += ': ' + msg;
               }
             } else {
-              this.outputError = err;
+              this.resultError = err;
             }
           })
           .finally(() => this.processing = false);
+    },
+    copyToClipboard() {
+      clearTimeout(this.copyToClipboardTimeout);
+      this.copyToClipboardIcon = 'mdi-check-bold';
+      this.copyToClipboardTooltip = 'Copied!'
+      this.copyToClipboardTimeout = setTimeout(() => {
+        this.copyToClipboardIcon = 'mdi-content-copy';
+        this.copyToClipboardTooltip = 'Copy result to clipboard';
+      }, 2000);
+      navigator.clipboard.writeText(this.result[this.resultFormat]);
     },
   },
 }
@@ -388,5 +414,8 @@ export default {
 <style>
 .fade-loading {
   opacity: 0.5;
+}
+.result textarea {
+  font-family: monospace;
 }
 </style>

@@ -1,7 +1,9 @@
+import io
 import json
 import logging
 import os
 import re
+import zipfile
 from ctypes.wintypes import RECT
 from datetime import datetime
 
@@ -11,6 +13,7 @@ from fastapi import FastAPI, HTTPException, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from ogc.na import ingest_json
 from ogc.na.provenance import ProvenanceMetadata, FileProvenanceMetadata
+from rdflib import Graph
 
 logging.config.fileConfig(Path(__file__).parent / 'logging.conf', disable_existing_loggers=False)
 logger = logging.getLogger('ogc_playground')
@@ -117,10 +120,11 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
     :param contexturl: URL for the YAML context definition
     :param jsondoc: JSON textual source document
     :param jsonurl: URL for the JSON source document
-    :param output: Type of output: `ttl` for Turtle or `expanded` for expanded JSON-LD. Otherwise,
-      the transformed JSON file will be returned.
+    :param output: Type of output: 'all' for a zip file with all output types; `ttl` for Turtle; `expanded` for
+        expanded JSON-LD. Otherwise, the transformed JSON file will be returned.
     :param base: Base URI for relative URIs
-    :return: The output textual document depending on the selected output format
+    :param provenance: Whether to include provenance metadata in the results
+    :return: Output file depending on the selected output format
     """
     try:
         start = datetime.now()
@@ -153,23 +157,22 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
         g, expanded, uplifted = ingest_json.generate_graph(jsondoc, context, base,
                                                            fetch_url_whitelist=REMOTE_CONTEXT_FETCH_WHITELIST)
 
-        prov_metadata = ProvenanceMetadata(
-            used=[FileProvenanceMetadata(uri=contexturl, mime_type='text/yaml', label="Context definition"),
-                  FileProvenanceMetadata(uri=jsonurl, mime_type='application/json', label="JSON document")],
-            start=start,
-            end_auto=True,
-        )
+        if provenance:
+            prov_metadata = ProvenanceMetadata(
+                used=[FileProvenanceMetadata(uri=contexturl, mime_type='text/yaml', label="Context definition"),
+                      FileProvenanceMetadata(uri=jsonurl, mime_type='application/json', label="JSON document")],
+                start=start,
+                end_auto=True,
+            )
+        else:
+            prov_metadata = None
 
+        if output == 'all':
+            return Response(_generate_all(g, expanded, uplifted, prov_metadata), media_type='application/zip')
         if output == 'ttl':
-            if provenance:
-                prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='text/turtle')
-                ingest_json.generate_provenance(g, prov_metadata)
-            return Response(g.serialize(format='ttl'), media_type='text/turtle')
+            return Response(_generate_ttl(g, prov_metadata), media_type='text/turtle')
         elif output == 'expanded':
-            if provenance:
-                prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='application/ld+json')
-                ingest_json.add_jsonld_provenance(expanded, prov_metadata)
-            return expanded
+            return _generate_jsonld(expanded, prov_metadata)
         else:
             return uplifted
     except HTTPException:
@@ -201,3 +204,30 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
             status_code=400,
             detail={"type": type(e).__qualname__, "msg": e.msg if hasattr(e, 'msg') else str(e)}
         )
+
+
+def _generate_ttl(g: Graph, prov_metadata: ProvenanceMetadata) -> str:
+    if prov_metadata:
+        prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='text/turtle')
+        ingest_json.generate_provenance(g, prov_metadata)
+    return g.serialize(format='ttl')
+
+
+def _generate_jsonld(expanded: dict, prov_metadata: ProvenanceMetadata) -> dict:
+    if prov_metadata:
+        prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='application/ld+json')
+        ingest_json.add_jsonld_provenance(expanded, prov_metadata)
+    return expanded
+
+
+def _generate_all(g: Graph, expanded: dict, uplifted: dict, prov_metadata: ProvenanceMetadata):
+    ttl = _generate_ttl(g, prov_metadata)
+    expanded = _generate_jsonld(expanded, prov_metadata)
+
+    zbuf = io.BytesIO()
+    with zipfile.ZipFile(zbuf, 'a', zipfile.ZIP_DEFLATED, False) as zfile:
+        zfile.writestr('ttl.ttl', ttl)
+        zfile.writestr('expanded.jsonld', json.dumps(expanded, indent=2))
+        zfile.writestr('uplifted.jsonld', json.dumps(uplifted, indent=2))
+
+    return zbuf.getvalue()
