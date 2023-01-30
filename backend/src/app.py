@@ -6,6 +6,7 @@ import re
 import zipfile
 from ctypes.wintypes import RECT
 from datetime import datetime
+from enum import Enum
 
 import requests
 from pathlib import Path
@@ -53,6 +54,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 logger.info('Allowed CORS origins: %s', CORS_ALLOW_ORIGINS)
+
+
+class JsonUpliftOutputType(Enum):
+    UPLIFTED = 'uplifted'
+    ALL = 'all'
+    EXPANDED = 'expanded'
+    TURTLE = 'ttl'
 
 
 async def _remote_fetch(url: str) -> bytes | bool:
@@ -105,9 +113,10 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                       contexturl: str | None = Form(None, description='URL for the YAML context definition'),
                       jsondoc: bytes = File('', alias='json', description='JSON textual source document'),
                       jsonurl: str | None = Form(None, description='URL for the JSON source document'),
-                      output: str | None = Form(None, description=(
-                              'Type of output: `ttl` for Turtle or `expanded` for expanded JSON-LD. Otherwise,'
-                              ' the transformed JSON file will be returned.')),
+                      output: JsonUpliftOutputType | None = Form(None, description=(
+                              'Type of output: `all` for a zip file with all output types; `ttl` for Turtle; '
+                              '`expanded` for expanded JSON-LD. Otherwise, the transformed JSON file will be returned.'
+                      )),
                       base: str | None = Form(None, description='Base URI for relative URIs'),
                       provenance: bool = Form(True, description='Add provenance metadata')):
     """
@@ -120,7 +129,7 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
     :param contexturl: URL for the YAML context definition
     :param jsondoc: JSON textual source document
     :param jsonurl: URL for the JSON source document
-    :param output: Type of output: 'all' for a zip file with all output types; `ttl` for Turtle; `expanded` for
+    :param output: Type of output: `all` for a zip file with all output types; `ttl` for Turtle; `expanded` for
         expanded JSON-LD. Otherwise, the transformed JSON file will be returned.
     :param base: Base URI for relative URIs
     :param provenance: Whether to include provenance metadata in the results
@@ -167,11 +176,11 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
         else:
             prov_metadata = None
 
-        if output == 'all':
+        if output == JsonUpliftOutputType.ALL:
             return Response(_generate_all(g, expanded, uplifted, prov_metadata), media_type='application/zip')
-        if output == 'ttl':
+        if output == JsonUpliftOutputType.TURTLE:
             return Response(_generate_ttl(g, prov_metadata), media_type='text/turtle')
-        elif output == 'expanded':
+        elif output == JsonUpliftOutputType.EXPANDED:
             return _generate_jsonld(expanded, prov_metadata)
         else:
             return uplifted
