@@ -23,7 +23,16 @@ CORS_ALLOW_ORIGINS = os.environ.get('CORS_ALLOW_ORIGINS', '*').split(',')
 
 rfa = os.environ.get('REMOTE_FETCH_ALLOWED', '').strip()
 if rfa:
-    REMOTE_FETCH_ALLOWED = re.compile(rfa)
+    try:
+        rfa = json.loads(rfa)
+        if isinstance(rfa, str):
+            REMOTE_FETCH_ALLOWED = [re.compile(rfa)]
+        elif isinstance(rfa, list):
+            REMOTE_FETCH_ALLOWED = [re.compile(e) for e in rfa]
+        else:
+            raise ValueError("Unparseable REMOTE_FETCH_ALLOWED: {}".format(rfa))
+    except json.JSONDecodeError:
+        REMOTE_FETCH_ALLOWED = [re.compile(rfa)]
     logger.info('Remote fetch allowed for "%s"', rfa)
 else:
     REMOTE_FETCH_ALLOWED = None
@@ -64,7 +73,7 @@ class JsonUpliftOutputType(Enum):
 
 
 async def _remote_fetch(url: str) -> bytes | bool:
-    if not REMOTE_FETCH_ALLOWED or not REMOTE_FETCH_ALLOWED.fullmatch(url):
+    if not REMOTE_FETCH_ALLOWED or not any(e.fullmatch(url) for e in REMOTE_FETCH_ALLOWED):
         logger.warning('Remote fetch not allowed for %s', url)
         return False
     logger.info('Remote fetching %s', url)
@@ -94,9 +103,9 @@ async def remote_fetch():
     :return: an object with a boolean `enabled` property and, optionally, a `regex`
       property to match against potential enpoints
     """
-    r = {'enabled': REMOTE_FETCH_ALLOWED is not None}
+    r = {'enabled': bool(REMOTE_FETCH_ALLOWED)}
     if REMOTE_FETCH_ALLOWED:
-        r['regex'] = REMOTE_FETCH_ALLOWED.pattern
+        r['regex'] = (e.pattern for e in REMOTE_FETCH_ALLOWED)
     r['context'] = {}
     if REMOTE_CONTEXT_FETCH_WHITELIST is None:
         r['context']['type'] = 'open'

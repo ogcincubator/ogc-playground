@@ -61,7 +61,7 @@
     </v-row>
     <v-row>
       <v-col cols="12" md="6">
-        <div>Context definition (YAML)</div>
+        <div>Uplift definition (YAML)</div>
         <v-select
             v-model="yamlContext.type"
             label="Source"
@@ -80,11 +80,15 @@
         <v-text-field
             v-if="yamlContext.type == 'url'"
             v-model="yamlContext.url"
-            label="YAML context definition URL"
+            label="Uplift definition URL"
             placeholder="https://..."
-            :hint="remoteFetchHint"
-            persistent-hint
         ></v-text-field>
+        <v-alert v-if="yamlContext.type == 'url'" type="info">
+          Uplift definition URLs must match the following pattern(s):
+          <ul>
+            <li class="ml-6" v-for="(r, index) in remoteFetchRegex" :key="index"><code>{{r}}</code></li>
+          </ul>
+        </v-alert>
         <v-file-input
             v-if="yamlContext.type == 'file'"
             v-model="yamlContext.file"
@@ -98,7 +102,7 @@
             Remote context URL imports are enabled.
           </v-alert>
           <v-alert v-if="remoteContextFetchType == 'whitelist'" type="info">
-            Remote context URL imports are limited to the following patterns:
+            Remote context URL imports are limited to the following pattern(s):
             <ul>
               <li class="ml-6" v-for="(r, index) in remoteContextFetchWhitelist" :key="index"><code>{{ r }}</code></li>
             </ul>
@@ -126,9 +130,13 @@
             v-model="jsonContent.url"
             label="JSON document URL"
             placeholder="https://..."
-            :hint="remoteFetchHint"
-            persistent-hint
         ></v-text-field>
+        <v-alert v-if="jsonContent.type == 'url'" type="info">
+          JSON document URLs must match the following pattern(s):
+          <ul>
+            <li class="ml-6" v-for="(r, index) in remoteFetchRegex" :key="index"><code>{{r}}</code></li>
+          </ul>
+        </v-alert>
         <v-file-input
             v-if="jsonContent.type == 'file'"
             v-model="jsonContent.file"
@@ -292,19 +300,23 @@ export default {
   computed: {
     canSubmit() {
       let result = true;
-      const remoteRegex = this.remoteFetchRegex ? new RegExp(this.remoteFetchRegex) : null;
+      const remoteRegex = this.remoteFetchRegex && this.remoteFetchRegex.length
+          ? this.remoteFetchRegex.map(e => new RegExp(e))
+          : null;
+      const remoteRegexMatches = s => !!s && remoteRegex && remoteRegex.some(r => s.match(r));
       switch (this.jsonContent.type) {
         case 'content':
           result &= this.jsonContent.content && !!this.jsonContent.content.trim();
           break;
         case 'url':
-          result &= !!this.jsonContent.url && !remoteRegex || !!this.jsonContent.url.match(remoteRegex);
+          console.log(remoteRegexMatches(this.jsonContent.url));
+          result &= remoteRegexMatches(this.jsonContent.url);
           break;
         case 'file':
           return !!this.jsonContent.file.length;
       }
-      if (this.yamlContext.type == 'url' && remoteRegex) {
-        result &= !this.yamlContext.url || !!this.yamlContext.url.match(remoteRegex);
+      if (this.yamlContext.type == 'url') {
+        result &= remoteRegexMatches(this.yamlContext.url);
       }
       return result;
     },
@@ -312,9 +324,6 @@ export default {
       return this.remoteFetchRegex === false
           ? this.inputSources.filter(i => i.value != 'url')
           : this.inputSources;
-    },
-    remoteFetchHint() {
-      return this.remoteFetchRegex ? `Allowed URLs: ${this.remoteFetchRegex}` : null;
     },
     filteredExamples() {
       return this.remoteFetchRegex === false
