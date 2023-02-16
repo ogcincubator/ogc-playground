@@ -2,7 +2,7 @@
   <v-container>
     <v-row>
       <v-col>
-        <h2 v-if="title">{{title}} - TBD</h2>
+        <h2 v-if="tabTitle">{{tabTitle}} - TBD</h2>
         <h2 v-else>TBD</h2>
       </v-col>
     </v-row>
@@ -11,7 +11,7 @@
 <script>
 export default {
   props: {
-    title: {
+    tabTitle: {
       type: String,
       required: false,
     }

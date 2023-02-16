@@ -28,13 +28,13 @@
           </v-col>
         </v-row>
       </v-container>
-      <component :is="activeComponent" :title="activeComponentTitle"></component>
+      <component :is="activeComponent" :tab-title="activeComponentTitle"></component>
     </v-main>
   </v-app>
 </template>
 
 <script>
-import JsonUplift from './components/JsonUplift.vue';
+import JsonUplift from './components/JsonUplift2.vue';
 import PlaceholderComponent from './components/PlaceholderComponent.vue';
 import logoUrl from '@/assets/logo.png';
 

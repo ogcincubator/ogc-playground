@@ -41,6 +41,17 @@
       </v-col>
     </v-row>
     <v-row>
+      <v-col>
+        <process-pill :start-marker="false">
+          Hola
+        </process-pill>
+        <yaml-json-editor
+            v-model="testContent"
+        />
+        {{ testContent }}
+      </v-col>
+    </v-row>
+    <v-row>
       <v-col cols="12" md="6">
         <div>Uplift definition (YAML)</div>
         <v-select
@@ -183,15 +194,20 @@ import {json as cmJson} from '@codemirror/lang-json';
 import axios from 'axios';
 import jszip from 'jszip';
 import examples from '@/assets/json-uplift-examples.json';
+import YamlJsonEditor from "@/components/YamlJsonEditor";
+import ProcessPill from "@/components/ProcessPill";
 
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 
 export default {
   name: 'JsonUplift',
   components: {
+    ProcessPill,
+    YamlJsonEditor,
     Codemirror,
   },
   data: () => ({
+    testContent: '',
     processing: false,
     inputSources: [
       {value: 'content', title: 'Text content'},
