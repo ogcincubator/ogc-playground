@@ -16,6 +16,12 @@ from ogc.na import ingest_json
 from ogc.na.provenance import ProvenanceMetadata, FileProvenanceMetadata
 from rdflib import Graph
 
+from yaml import load as yaml_load
+try:
+    from yaml import CLoader as YamlLoader
+except ImportError:
+    from yaml import Loader as YamlLoader
+
 logging.config.fileConfig(Path(__file__).parent / 'logging.conf', disable_existing_loggers=False)
 logger = logging.getLogger('ogc_playground')
 
@@ -171,7 +177,7 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                         "msg": "No JSON source specified",
                     }
                 )
-        jsondoc = json.loads(jsondoc)
+        jsondoc = yaml_load(jsondoc, YamlLoader)
         g, expanded, uplifted = ingest_json.generate_graph(jsondoc, context, base,
                                                            fetch_url_whitelist=REMOTE_CONTEXT_FETCH_WHITELIST)
 

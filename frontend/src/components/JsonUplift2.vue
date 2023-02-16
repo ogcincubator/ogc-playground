@@ -14,7 +14,9 @@
             class="step"
             :class="{ active: activeStepIdx === idx }"
         >
+          <v-progress-circular v-if="step.loading" indeterminate size="20" class="mr-1"/>
           <v-icon>{{ stepIcons[step.type] }}</v-icon>
+          {{ step.errors && step.errors.length ? '!' : '' }}
           {{ step.modified ? '*' : '' }}
           {{ step.title }}
         </process-pill>
@@ -34,6 +36,16 @@
             </v-list-item>
           </v-list>
         </v-menu>
+        <v-btn
+          icon="mdi-play"
+          size="x-small"
+          color="primary"
+          class="ml-5"
+          title="Run full workflow"
+          :disabled="running"
+          :loading="running"
+          @click.prevent="runFullWorkflow"
+        ></v-btn>
       </v-col>
     </v-row>
     <v-row>
@@ -43,19 +55,51 @@
             <h2>
               {{ activeStep.title }}
               <small>(Step {{ activeStepIdx + 1 }})</small>
-              <v-btn v-if="activeStepIdx !== 0 && activeStepIdx !== steps.length - 1"
-                     class="ml-5"
-                     size="x-small"
-                     color="error"
-                     title="Delete step"
-                     @click.prevent="deleteStep">
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
+              <span v-if="activeStepIdx !== 0 && activeStepIdx !== steps.length - 1">
+                <v-btn
+                    v-if="canRunStep"
+                    class="ml-5"
+                    size="x-small"
+                    color="primary"
+                    title="Run step"
+                    :disabled="running"
+                    @click.prevent="runStep(activeStepIdx, true)"
+                    icon="mdi-play"
+                ></v-btn>
+                <v-btn
+                    v-if="!activeStep.pending"
+                    class="ml-1"
+                    size="x-small"
+                    title="View output"
+                    @click.prevent="activeStepOutputDialog = true"
+                    icon="mdi-magnify"
+                ></v-btn>
+                <v-btn
+                    class="ml-5"
+                    size="x-small"
+                    color="error"
+                    title="Delete step"
+                    @click.prevent="deleteStep"
+                    icon="mdi-delete"
+                ></v-btn>
+              </span>
             </h2>
           </v-col>
         </v-row>
+        <v-row v-if="activeStep.errors && activeStep.errors.length">
+          <v-col class="text-error">
+            <p>
+              The following errors were encountered while running this step:
+            </p>
+            <ul>
+              <li v-for="(err, idx) in activeStep.errors" :key="idx">
+                {{ err }}
+              </li>
+            </ul>
+          </v-col>
+        </v-row>
         <v-row>
-          <v-col class="text-right">
+          <v-col>
             <source-loader
                 v-if="activeStep.type !== 'output'"
                 @change="sourceLoaderChanged"
@@ -64,11 +108,35 @@
         </v-row>
         <v-row>
           <v-col>
-            <YamlJsonEditor
-                v-if="activeStep.type !== 'output'"
-                v-model="activeStep.contents"
-                v-model:mode="activeStep.mode"
-            />
+            <div v-if="activeStep.type !== 'output'">
+              <YamlJsonEditor
+                  v-model="activeStep.contents"
+                  v-model:mode="activeStep.mode"
+              />
+              <v-dialog
+                v-model="activeStepOutputDialog"
+                width="90%"
+              >
+                <v-card>
+                  <v-card-text>
+                    <result-viewer
+                      :formats="outputFormats"
+                      :output="activeStep.output"
+                    />
+                  </v-card-text>
+                  <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn @click.prevent="activeStepOutputDialog = false">Close</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+            </div>
+            <div v-else>
+              <result-viewer
+                :formats="outputFormats"
+                :output="activeStep.output"
+              />
+            </div>
           </v-col>
         </v-row>
       </v-col>
@@ -78,10 +146,16 @@
 <script>
 import ProcessPill from "@/components/ProcessPill";
 import YamlJsonEditor from "@/components/YamlJsonEditor";
-import SourceLoader from "@/SourceLoader";
+import SourceLoader from "@/components/SourceLoader";
+import axios from "axios";
+import jszip from "jszip";
+import ResultViewer from "@/components/ResultViewer";
+
+const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 
 export default {
   components: {
+    ResultViewer,
     YamlJsonEditor,
     ProcessPill,
     SourceLoader,
@@ -101,6 +175,7 @@ export default {
           title: 'Output',
           contents: '',
           pending: true,
+          output: null,
         }
       ],
       stepIcons: {
@@ -115,7 +190,13 @@ export default {
       },
       activeStepIdx: 0,
       inputContent: '',
-      output: null,
+      oldStepContents: '',
+      outputFormats: [
+        {value: 'ttl', title: 'Turtle', fn: 'ttl.ttl'},
+        {value: 'json', title: 'Uplifted JSON-LD', fn: 'uplifted.jsonld'},
+        {value: 'expanded', title: 'Expanded JSON-LD', fn: 'expanded.jsonld'},
+      ],
+      activeStepOutputDialog: false,
     };
   },
   methods: {
@@ -127,6 +208,9 @@ export default {
         mode: 'yaml',
         contents: '',
         modified: false,
+        output: null,
+        running: false,
+        errors: [],
       });
       this.activeStepIdx = this.steps.length - 2;
     },
@@ -150,25 +234,125 @@ export default {
       this.steps.splice(this.activeStepIdx, 1);
       this.activeStepIdx--;
     },
+    async runFullWorkflow() {
+      for (let i = 1; i < this.steps.length - 1; i++) {
+        const result = await this.runStep(i);
+        if (!result) {
+          break;
+        }
+      }
+    },
+    async runStep(idx, force) {
+      if (idx === 0 || idx === this.steps.length - 1) {
+        return true;
+      }
+
+      const step = this.steps[idx], prevStep = this.steps[idx - 1];
+      if (!step.pending && !step.modified && !force) {
+        return true;
+      }
+      step.loading = true;
+
+      if (step.type === 'uplift') {
+
+        const inputData = idx === 1 ? prevStep.contents : prevStep.output['json'];
+        const upliftConfig = step.contents;
+
+        const formData = new FormData();
+        formData.append('output', 'all');
+        formData.append('context', upliftConfig);
+        formData.append('json', inputData);
+        try {
+          const result = await axios.post(`${BACKEND_URL}/json-uplift`, formData, {
+              responseType: 'blob'
+            })
+            .then(res => jszip.loadAsync(res.data))
+            .then(zipfile => Promise.all(this.outputFormats.map(async fmt => [fmt.value, await zipfile.file(fmt.fn).async('string')])))
+            .then(r => this.result = Object.fromEntries(r))
+            .finally(() => {
+              step.loading = false;
+            });
+          step.pending = false;
+          step.modified = false;
+          step.output = result;
+
+          if (idx === this.steps.length -2) {
+            this.steps[idx + 1].pending = false;
+            this.steps[idx + 1].output = result;
+          }
+
+          return true;
+        } catch (err) {
+          console.log(err);
+
+          const errText = await err.response.data.text();
+          let errMsg = null;
+          try {
+            const errObj = JSON.parse(errText);
+            if (errObj?.detail?.msg) {
+              errMsg = errObj.detail.msg;
+              if (errObj?.detail?.cause) {
+                errMsg += ': ' + errObj.detail.cause.split('|', 2)[1];
+              }
+            } else if (err.message) {
+              errMsg = err.message;
+            }
+          } catch {
+            // ignore
+          }
+
+          if (!errMsg) {
+            errMsg = 'Unknown error';
+          }
+
+          step.errors = [errMsg];
+
+          return false;
+        }
+      } else {
+        return true;
+      }
+    },
   },
   computed: {
     activeStep() {
       return this.steps[this.activeStepIdx];
+    },
+    running() {
+      return this.steps.some(s => s.loading);
+    },
+    canRunStep() {
+      return this.activeStepIdx > 0 && this.activeStepIdx < this.steps.length - 1
+          && this.steps.slice(1, this.activeStepIdx).every(s => !s.pending);
+    },
+    inputStep() {
+      return this.steps[0];
+    },
+    outputStep() {
+      return this.steps[this.steps.length - 1];
     },
   },
   watch: {
     activeStep: {
       handler(newv, oldv) {
         if (newv !== oldv) {
-          console.log('changed step');
+          this.oldStepContents = newv.contents;
           return;
         }
+        if (newv.contents === this.oldStepContents) {
+          return;
+        }
+        this.oldStepContents = newv.contents;
         if (this.activeStepIdx > 0) {
+          this.activeStep.errors = [];
           this.activeStep.modified = true;
+          this.activeStep.pending = true;
         }
         this.steps.forEach((s, i) => {
           if (i > this.activeStepIdx) {
+            s.errors = [];
             s.pending = true;
+            s.output = null;
           }
         });
       },
@@ -178,6 +362,9 @@ export default {
 }
 </script>
 <style>
+ul {
+  padding-left: 1em;
+}
 .step.active {
   position: relative;
 }

@@ -13,10 +13,11 @@
     />
     <v-btn-toggle
         v-if="showModeButtons"
-        v-model="jsonMode"
+        :modelValue="mode"
+        @update:modelValue="$emit('update:mode', $event)"
         mandatory class="d-flex justify-center">
-      <v-btn :value="true">JSON</v-btn>
-      <v-btn :value="false">YAML</v-btn>
+      <v-btn value="json">JSON</v-btn>
+      <v-btn value="yaml">YAML</v-btn>
     </v-btn-toggle>
   </div>
 </template>
@@ -67,31 +68,26 @@ export default {
       yamlExtensions: [
         StreamLanguage.define(yamlMode),
       ],
-      jsonMode: true,
     }
   },
   computed: {
     extensions() {
-      return this.jsonMode ? this.jsonExtensions : this.yamlExtensions;
+      return this.mode === 'json' ? this.jsonExtensions : this.yamlExtensions;
     }
   },
   watch: {
-    jsonMode(v) {
+    mode(v) {
       if (this.modelValue.trim()) {
         try {
-          if (v) {
+          if (v === 'json') {
             this.$emit('update:modelValue', JSON.stringify(jsYaml.load(this.modelValue), null, 2));
-          } else {
+          } else if (v === 'yaml') {
             this.$emit('update:modelValue', jsYaml.dump(JSON.parse(this.modelValue)));
           }
         } catch {
           // ignore
         }
       }
-      this.$emit('update:mode', v ? 'json' : 'yaml');
-    },
-    mode(v) {
-      this.jsonMode = v === 'json';
     },
   },
 }
