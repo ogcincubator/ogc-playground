@@ -24,6 +24,7 @@
               class="output"
               v-model="outputText"
               :rows="15"
+              :readonly="true"
           ></v-textarea>
         </v-col>
       </v-row>
