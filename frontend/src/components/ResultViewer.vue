@@ -61,6 +61,9 @@ export default {
     };
   },
   mounted() {
+    if (this.format) {
+      this.selectedFormat = this.format;
+    }
     this.updateSelectedFormat();
   },
   methods: {
@@ -76,8 +79,6 @@ export default {
     },
     updateSelectedFormat() {
       const v = this.formats;
-      console.log("!formats")
-      console.log(v, v.length, this.selectedFormat, v.find(e => e.value == this.selectedFormat));
       if (!v || !v.length || v.find(e => e.value == this.selectedFormat)) {
         return;
       }
