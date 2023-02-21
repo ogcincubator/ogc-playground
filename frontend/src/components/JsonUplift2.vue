@@ -150,6 +150,7 @@ import SourceLoader from "@/components/SourceLoader";
 import axios from "axios";
 import jszip from "jszip";
 import ResultViewer from "@/components/ResultViewer";
+import jsYaml from "js-yaml";
 
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 
@@ -235,7 +236,7 @@ export default {
       this.activeStepIdx--;
     },
     async runFullWorkflow() {
-      for (let i = 1; i < this.steps.length - 1; i++) {
+      for (let i = 0; i < this.steps.length - 1; i++) {
         const result = await this.runStep(i);
         if (!result) {
           break;
@@ -243,20 +244,43 @@ export default {
       }
     },
     async runStep(idx, force) {
-      if (idx === 0 || idx === this.steps.length - 1) {
+      if (idx === this.steps.length - 1) {
         return true;
       }
-
-      const step = this.steps[idx], prevStep = this.steps[idx - 1];
+      const step = this.steps[idx], prevStep = idx === 0 ? null : this.steps[idx - 1];
       if (!step.pending && !step.modified && !force) {
         return true;
       }
       step.loading = true;
 
-      if (step.type === 'uplift') {
-
-        const inputData = idx === 1 ? prevStep.contents : prevStep.output['json'];
-        const upliftConfig = step.contents;
+      if (idx === 0) {
+        // input step - validate JSON / YAML
+        try {
+          const inputData = jsYaml.load(step.contents);
+          if (typeof inputData !== 'object') {
+            step.errors = [
+              'Input data must be an object or array'
+            ];
+            step.loading = false;
+            return false;
+          }
+        } catch {
+          step.errors = [
+            'Input data is not a valid JSON or YAML document'
+          ];
+          step.loading = false;
+          return false;
+        }
+      }
+      if (step.type === 'uplift' || (idx === 0 && this.steps.length < 3)) {
+        // Uplift step OR input step and no other workflow steps
+        let inputData;
+        switch (idx) {
+          case 0: inputData = step.contents; break;
+          case 1: inputData = prevStep.contents; break;
+          default: inputData = prevStep.output['json'];
+        }
+        const upliftConfig = idx === 0 ? '' : step.contents;
 
         const formData = new FormData();
         formData.append('output', 'all');
@@ -343,9 +367,9 @@ export default {
           return;
         }
         this.oldStepContents = newv.contents;
+        this.activeStep.errors = [];
+        this.activeStep.modified = true;
         if (this.activeStepIdx > 0) {
-          this.activeStep.errors = [];
-          this.activeStep.modified = true;
           this.activeStep.pending = true;
         }
         this.steps.forEach((s, i) => {
