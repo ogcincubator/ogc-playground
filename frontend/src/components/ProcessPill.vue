@@ -1,13 +1,10 @@
 <template>
-  <div class="process-pill d-inline-block">
-    <div class="process-pill-content d-flex" :class="{ active }">
-      <div v-if="startMarker" class="start-marker" :style="{ backgroundColor: bgColor, color: textColor }">
-      </div>
-      <div class="content" :style="{ backgroundColor: bgColor, color: textColor }">
-        <slot></slot>
-      </div>
-      <div v-if="endMarker" class="end-marker" :style="{ backgroundColor: bgColor, color: textColor }">
-      </div>
+  <div
+    class="process-pill d-inline-block"
+    :class="{ active, startMarker, endMarker }"
+    :style="{ backgroundColor: bgColor, color: textColor }">
+    <div class="content">
+      <slot></slot>
     </div>
   </div>
 </template>
@@ -38,24 +35,29 @@ export default {
 }
 </script>
 <style>
-.start-marker {
-  min-width: 0.8em;
-  clip-path: polygon(0% 0%, 100% 50%, 0% 100%, 100% 100%, 100% 0%);
-}
-.end-marker {
-  min-width: 0.8em;
-  clip-path: polygon(0% 0%, 100% 50%, 0% 100%);
-}
-.process-pill-content .content {
+.process-pill .content {
   padding: 0.3em 0.5em;
 }
-.process-pill-content {
+.process-pill {
   cursor: pointer;
 }
-.process-pill-content:hover {
+.process-pill:hover {
   opacity: 0.8;
 }
-.process-pill-content.active {
+.process-pill.active {
   font-weight: bold;
+}
+.process-pill.startMarker {
+  padding-left: 1em;
+  margin-left: -0.25em;
+  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 1em 50%);
+}
+.process-pill.endMarker {
+  padding-right: 1em;
+  margin-right: -0.25em;
+  clip-path: polygon(0% 0%, calc(100% - 1em) 0%, 100% 50%, calc(100% - 1em) 100%, 0% 100%);
+}
+.process-pill.startMarker.endMarker {
+  clip-path: polygon(0% 0%, calc(100% - 1em) 0%, 100% 50%, calc(100% - 1em) 100%, 0% 100%, 1em 50%);
 }
 </style>
