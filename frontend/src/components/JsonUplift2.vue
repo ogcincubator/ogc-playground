@@ -122,6 +122,7 @@
                     <result-viewer
                       :formats="outputFormats"
                       :output="activeStep.output"
+                      v-model:format="selectedOutputFormat"
                     />
                   </v-card-text>
                   <v-card-actions>
@@ -135,6 +136,7 @@
               <result-viewer
                 :formats="outputFormats"
                 :output="activeStep.output"
+                v-model:format="selectedOutputFormat"
               />
             </div>
           </v-col>
@@ -197,6 +199,7 @@ export default {
         {value: 'json', title: 'Uplifted JSON-LD', fn: 'uplifted.jsonld'},
         {value: 'expanded', title: 'Expanded JSON-LD', fn: 'expanded.jsonld'},
       ],
+      selectedOutputFormat: null,
       activeStepOutputDialog: false,
     };
   },
@@ -236,10 +239,11 @@ export default {
       this.activeStepIdx--;
     },
     async runFullWorkflow() {
-      for (let i = 0; i < this.steps.length - 1; i++) {
+      for (let i = 0; i < this.steps.length; i++) {
+        this.activeStepIdx = i;
         const result = await this.runStep(i);
         if (!result) {
-          break;
+          return false;
         }
       }
     },
@@ -271,8 +275,14 @@ export default {
           step.loading = false;
           return false;
         }
+        if (this.steps.length > 2) {
+          // do not go any further
+          step.modified = false;
+          step.loading = false;
+          return true;
+        }
       }
-      if (step.type === 'uplift' || (idx === 0 && this.steps.length < 3)) {
+      if (step.type === 'uplift' || step.type === 'input') {
         // Uplift step OR input step and no other workflow steps
         let inputData;
         switch (idx) {
