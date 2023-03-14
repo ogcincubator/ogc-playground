@@ -153,8 +153,10 @@ import axios from "axios";
 import jszip from "jszip";
 import ResultViewer from "@/components/ResultViewer";
 import jsYaml from "js-yaml";
+import { debounce } from 'lodash';
 
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
+const LS_KEY_STATUS = 'ogc-playground.v2.status';
 
 export default {
   components: {
@@ -192,7 +194,6 @@ export default {
         output: '#00695C',
       },
       activeStepIdx: 0,
-      inputContent: '',
       oldStepContents: '',
       outputFormats: [
         {value: 'ttl', title: 'Turtle', fn: 'ttl.ttl'},
@@ -202,6 +203,39 @@ export default {
       selectedOutputFormat: null,
       activeStepOutputDialog: false,
     };
+  },
+  created() {
+    console.log('created')
+    this.debouncedSaveStatus = debounce(() => {
+        const status = {
+          steps: this.steps,
+          selectedOutputFormat: this.selectedOutputFormat,
+        };
+        localStorage.setItem(LS_KEY_STATUS, JSON.stringify(status));
+      }, 2000);
+  },
+  beforeUnmount() {
+    console.log('beforeUnmount')
+    this.debouncedSaveStatus.cancel();
+  },
+  mounted() {
+    const savedStatusJson = localStorage.getItem(LS_KEY_STATUS);
+    if (savedStatusJson) {
+      try {
+        const savedStatus = JSON.parse(savedStatusJson);
+        if (Array.isArray(savedStatus.steps)) {
+          this.steps.length = 0;
+          this.steps.push(...savedStatus.steps);
+        }
+        if (savedStatus.selectedOutputFormat
+            && this.outputFormats.some(v => v.value === savedStatus.selectedOutputFormat)) {
+          this.selectedOutputFormat = savedStatus.selectedOutputFormat;
+        }
+      } catch {
+        // Clear key
+        localStorage.removeItem(LS_KEY_STATUS);
+      }
+    }
   },
   methods: {
     addUpliftStep() {
@@ -347,6 +381,9 @@ export default {
         return true;
       }
     },
+    saveStatus() {
+      this.debouncedSaveStatus.call(this);
+    },
   },
   computed: {
     activeStep() {
@@ -379,6 +416,7 @@ export default {
         this.oldStepContents = newv.contents;
         this.activeStep.errors = [];
         this.activeStep.modified = true;
+        this.saveStatus();
         if (this.activeStepIdx > 0) {
           this.activeStep.pending = true;
         }
