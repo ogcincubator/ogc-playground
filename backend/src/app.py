@@ -3,16 +3,19 @@ import json
 import logging
 import os
 import re
+import urllib.error
 import zipfile
 from ctypes.wintypes import RECT
 from datetime import datetime
+from time import time
 from enum import Enum
 
 import requests
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
-from ogc.na import ingest_json
+from ogc.na import ingest_json, util as ogcnautil
+from ogc.na.profile import ProfileRegistry
 from ogc.na.provenance import ProvenanceMetadata, FileProvenanceMetadata
 from rdflib import Graph
 
@@ -24,6 +27,13 @@ except ImportError:
 
 logging.config.fileConfig(Path(__file__).parent / 'logging.conf', disable_existing_loggers=False)
 logger = logging.getLogger('ogc_playground')
+
+_profile_registry: ProfileRegistry = None
+_profiles_ts: float = None
+PROFILE_SOURCES = ogcnautil.glob_list_split(os.environ.get('PROFILE_SOURCES', ''))
+PROFILE_LOCAL_ARTIFACTS_MAPPINGS: dict[str, str] = json.loads(os.environ.get('PROFILE_LOCAL_ARTIFACTS_MAPPINGS', '{}'))
+PROFILES_TTL_SECONDS = 60
+logger.info('Profile sources: %s', PROFILE_SOURCES)
 
 CORS_ALLOW_ORIGINS = os.environ.get('CORS_ALLOW_ORIGINS', '*').split(',')
 
@@ -192,11 +202,11 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
             prov_metadata = None
 
         if output == JsonUpliftOutputType.ALL:
-            return Response(_generate_all(g, expanded, uplifted, prov_metadata), media_type='application/zip')
+            return Response(_uplift_generate_all(g, expanded, uplifted, prov_metadata), media_type='application/zip')
         if output == JsonUpliftOutputType.TURTLE:
-            return Response(_generate_ttl(g, prov_metadata), media_type='text/turtle')
+            return Response(_uplift_generate_ttl(g, prov_metadata), media_type='text/turtle')
         elif output == JsonUpliftOutputType.EXPANDED:
-            return _generate_jsonld(expanded, prov_metadata)
+            return _uplift_generate_jsonld(expanded, prov_metadata)
         else:
             return uplifted
     except HTTPException:
@@ -230,23 +240,59 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
         )
 
 
-def _generate_ttl(g: Graph, prov_metadata: ProvenanceMetadata) -> str:
+@app.get('/profiles')
+async def get_profiles() -> dict:
+    registry = _get_profile_registry()
+    return {
+        str(uri): {
+            'label': profile.label,
+            'token': profile.token,
+            'roles': set(profile.artifacts.keys()),
+        } for uri, profile in registry.profiles.items()
+    }
+
+
+@app.post('/entail-validate')
+async def entail_validate(doc: bytes = File(description='Input document'),
+                          profile_uris: list[str] = Form(description='Profile URI')):
+    print(profile_uris)
+    g = Graph().parse(doc)
+    registry = _get_profile_registry()
+    for profile_uri in profile_uris:
+        if not registry.has_profile(profile_uri):
+            raise HTTPException(
+                status_code=400,
+                detail={"type": "UnknownProfileError", "msg": "Unknown profile URI {}".format(profile_uri)}
+            )
+
+    g = registry.entail(g, additional_profiles=profile_uris)[0]
+    validation_report = registry.validate(g, additional_profiles=profile_uris)
+
+    zbuf = io.BytesIO()
+    with zipfile.ZipFile(zbuf, 'a', zipfile.ZIP_DEFLATED, False) as zfile:
+        zfile.writestr('entailed.ttl', g.serialize(format='ttl'))
+        zfile.writestr('validation.txt', validation_report.text)
+        zfile.writestr('validation.ttl', validation_report.graph.serialize(format='ttl'))
+    return Response(zbuf.getvalue(), media_type='application/zip')
+
+
+def _uplift_generate_ttl(g: Graph, prov_metadata: ProvenanceMetadata) -> str:
     if prov_metadata:
         prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='text/turtle')
         ingest_json.generate_provenance(g, prov_metadata)
     return g.serialize(format='ttl')
 
 
-def _generate_jsonld(expanded: dict, prov_metadata: ProvenanceMetadata) -> dict:
+def _uplift_generate_jsonld(expanded: dict, prov_metadata: ProvenanceMetadata) -> dict:
     if prov_metadata:
         prov_metadata.output = FileProvenanceMetadata(uri='#', mime_type='application/ld+json')
         ingest_json.add_jsonld_provenance(expanded, prov_metadata)
     return expanded
 
 
-def _generate_all(g: Graph, expanded: dict, uplifted: dict, prov_metadata: ProvenanceMetadata):
-    ttl = _generate_ttl(g, prov_metadata)
-    expanded = _generate_jsonld(expanded, prov_metadata)
+def _uplift_generate_all(g: Graph, expanded: dict, uplifted: dict, prov_metadata: ProvenanceMetadata):
+    ttl = _uplift_generate_ttl(g, prov_metadata)
+    expanded = _uplift_generate_jsonld(expanded, prov_metadata)
 
     zbuf = io.BytesIO()
     with zipfile.ZipFile(zbuf, 'a', zipfile.ZIP_DEFLATED, False) as zfile:
@@ -255,3 +301,18 @@ def _generate_all(g: Graph, expanded: dict, uplifted: dict, prov_metadata: Prove
         zfile.writestr('uplifted.jsonld', json.dumps(uplifted, indent=2))
 
     return zbuf.getvalue()
+
+
+def _get_profile_registry() -> ProfileRegistry:
+    if not PROFILE_SOURCES:
+        return []
+    now = time()
+    global _profile_registry
+    if not _profile_registry or not _profiles_ts or now - _profiles_ts >= PROFILES_TTL_SECONDS:
+        _profile_registry = ProfileRegistry(
+            PROFILE_SOURCES,
+            local_artifact_mappings=PROFILE_LOCAL_ARTIFACTS_MAPPINGS,
+            ignore_artifact_errors=True,
+        )
+    return _profile_registry
+
