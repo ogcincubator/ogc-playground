@@ -10,7 +10,7 @@
             @click.prevent="activeStepIdx = idx"
             :start-marker="step.type !== 'input'"
             :end-marker="step.type !== 'output'"
-            :style="getStepStyle(step, idx)"
+            :opacity="step.pending ? 0.4 : 1.0"
             class="step"
             :class="{ active: activeStepIdx === idx }"
         >
@@ -99,46 +99,38 @@
           </v-col>
         </v-row>
         <v-row>
-          <v-col>
-            <source-loader
-                v-if="activeStep.type !== 'output'"
-                @change="sourceLoaderChanged"
-            />
+          <v-col v-if="activeStep.type !== 'output'">
+            <component
+              :is="activeStepComponent"
+              :step="activeStep"
+              @update="updateActiveStep"
+            >
+            </component>
+            <v-dialog
+              v-model="activeStepOutputDialog"
+              width="90%"
+            >
+              <v-card>
+                <v-card-text>
+                  <result-viewer
+                    :formats="outputFormats"
+                    :output="activeStep.output"
+                    v-model:format="selectedOutputFormat"
+                  />
+                </v-card-text>
+                <v-card-actions>
+                  <v-spacer></v-spacer>
+                  <v-btn @click.prevent="activeStepOutputDialog = false">Close</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
           </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <div v-if="activeStep.type !== 'output'">
-              <YamlJsonEditor
-                  v-model="activeStep.contents"
-                  v-model:mode="activeStep.mode"
-              />
-              <v-dialog
-                v-model="activeStepOutputDialog"
-                width="90%"
-              >
-                <v-card>
-                  <v-card-text>
-                    <result-viewer
-                      :formats="outputFormats"
-                      :output="activeStep.output"
-                      v-model:format="selectedOutputFormat"
-                    />
-                  </v-card-text>
-                  <v-card-actions>
-                    <v-spacer></v-spacer>
-                    <v-btn @click.prevent="activeStepOutputDialog = false">Close</v-btn>
-                  </v-card-actions>
-                </v-card>
-              </v-dialog>
-            </div>
-            <div v-else>
-              <result-viewer
+          <v-col v-else>
+            <result-viewer
                 :formats="outputFormats"
                 :output="activeStep.output"
                 v-model:format="selectedOutputFormat"
               />
-            </div>
           </v-col>
         </v-row>
       </v-col>
@@ -148,22 +140,26 @@
 <script>
 import ProcessPill from "@/components/ProcessPill";
 import YamlJsonEditor from "@/components/YamlJsonEditor";
-import SourceLoader from "@/components/SourceLoader";
 import axios from "axios";
 import jszip from "jszip";
 import ResultViewer from "@/components/ResultViewer";
 import jsYaml from "js-yaml";
 import { debounce } from 'lodash';
+import ContentStep from "@/components/steps/ContentStep.vue";
 
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
 const LS_KEY_STATUS = 'ogc-playground.v2.status';
+
+const STEP_COMPONENTS = {
+  'input': ContentStep,
+  'uplift': ContentStep,
+};
 
 export default {
   components: {
     ResultViewer,
     YamlJsonEditor,
     ProcessPill,
-    SourceLoader,
   },
   data() {
     return {
@@ -205,7 +201,6 @@ export default {
     };
   },
   created() {
-    console.log('created')
     this.debouncedSaveStatus = debounce(() => {
         const status = {
           steps: this.steps,
@@ -215,7 +210,6 @@ export default {
       }, 2000);
   },
   beforeUnmount() {
-    console.log('beforeUnmount')
     this.debouncedSaveStatus.cancel();
   },
   mounted() {
@@ -258,15 +252,6 @@ export default {
         style.opacity = 0.4;
       }
       return style;
-    },
-    sourceLoaderChanged(v) {
-      this.activeStep.contents = v;
-      try {
-        JSON.parse(v);
-        this.activeStep.mode = 'json';
-      } catch {
-        this.activeStep.mode = 'yaml';
-      }
     },
     deleteStep() {
       this.steps.splice(this.activeStepIdx, 1);
@@ -384,10 +369,13 @@ export default {
     saveStatus() {
       this.debouncedSaveStatus.call(this);
     },
+    updateActiveStep(values) {
+      Object.entries(values).forEach(([k, v]) => this.activeStep[k] = v);
+    },
   },
   computed: {
     activeStep() {
-      return this.steps[this.activeStepIdx];
+        return this.steps[this.activeStepIdx];
     },
     running() {
       return this.steps.some(s => s.loading);
@@ -401,6 +389,9 @@ export default {
     },
     outputStep() {
       return this.steps[this.steps.length - 1];
+    },
+    activeStepComponent() {
+      return STEP_COMPONENTS[this.activeStep.type];
     },
   },
   watch: {

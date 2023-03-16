@@ -2,8 +2,8 @@
   <div
     class="process-pill d-inline-block"
     :class="{ active, startMarker, endMarker }"
-    :style="{ backgroundColor: bgColor, color: textColor }">
-    <div class="content">
+  >
+    <div class="content" :style="{ backgroundColor: bgColor, color: textColor, opacity }">
       <slot></slot>
     </div>
   </div>
@@ -31,6 +31,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    opacity: {
+      type: Number,
+      default: 1.0,
+    },
   },
 }
 </script>
@@ -44,20 +48,17 @@ export default {
 .process-pill:hover {
   opacity: 0.8;
 }
-.process-pill.active {
-  font-weight: bold;
-}
-.process-pill.startMarker {
+.process-pill.startMarker .content {
   padding-left: 1em;
   margin-left: -0.25em;
   clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 1em 50%);
 }
-.process-pill.endMarker {
+.process-pill.endMarker .content {
   padding-right: 1em;
   margin-right: -0.25em;
   clip-path: polygon(0% 0%, calc(100% - 1em) 0%, 100% 50%, calc(100% - 1em) 100%, 0% 100%);
 }
-.process-pill.startMarker.endMarker {
+.process-pill.startMarker.endMarker .content {
   clip-path: polygon(0% 0%, calc(100% - 1em) 0%, 100% 50%, calc(100% - 1em) 100%, 0% 100%, 1em 50%);
 }
 </style>
