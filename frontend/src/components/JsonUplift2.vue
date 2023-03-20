@@ -46,6 +46,15 @@
           :loading="running"
           @click.prevent="runFullWorkflow"
         ></v-btn>
+        <v-spacer></v-spacer>
+        <v-btn
+          icon="mdi-delete-sweep"
+          size="x-small"
+          color="error"
+          title="Delete all steps"
+          :disabled="running"
+          @click.prevent="clearWorkflow"
+        ></v-btn>
       </v-col>
     </v-row>
     <v-row>
@@ -162,23 +171,24 @@ export default {
     ProcessPill,
   },
   data() {
+    const defaultSteps = [{
+      type: 'input',
+      title: 'Input',
+      contents: '',
+      mode: 'json',
+      modified: false,
+    },
+      {
+        type: 'output',
+        title: 'Output',
+        contents: '',
+        pending: true,
+        output: null,
+      },
+    ];
     return {
-      steps: [
-        {
-          type: 'input',
-          title: 'Input',
-          contents: '',
-          mode: 'json',
-          modified: false,
-        },
-        {
-          type: 'output',
-          title: 'Output',
-          contents: '',
-          pending: true,
-          output: null,
-        }
-      ],
+      defaultSteps,
+      steps: JSON.parse(JSON.stringify(defaultSteps)),
       stepIcons: {
         input: 'mdi-import',
         uplift: 'mdi-database-arrow-up-outline',
@@ -371,6 +381,10 @@ export default {
     },
     updateActiveStep(values) {
       Object.entries(values).forEach(([k, v]) => this.activeStep[k] = v);
+    },
+    clearWorkflow() {
+      this.steps.splice(0, Infinity, ...JSON.parse(JSON.stringify(this.defaultSteps)));
+      this.saveStatus();
     },
   },
   computed: {
