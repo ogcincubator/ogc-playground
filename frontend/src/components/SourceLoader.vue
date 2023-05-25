@@ -25,32 +25,34 @@
     </v-menu>
 
     <v-dialog
-        v-model="urlDialog"
-        width="400px"
-      >
-        <v-card>
-          <v-card-text>
-            <v-text-field
-              label="URL"
-              v-model="url"
-              prepend-inner-icon="mdi-web"
-              placeholder="https://www..."
-              :error-messages="urlErrors"
-              :disabled="urlLoading"
-              :loading="urlLoading"
-            />
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer></v-spacer>
-            <v-btn @click.prevent="urlDialog = false">Cancel</v-btn>
-            <v-btn color="primary" @click.prevent="loadFromUrl">Load</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+      v-model="urlDialog"
+      width="400px"
+    >
+      <v-card>
+        <v-card-text>
+          <v-text-field
+            label="URL"
+            v-model="url"
+            prepend-inner-icon="mdi-web"
+            placeholder="https://www..."
+            :error-messages="urlErrors"
+            :disabled="urlLoading"
+            :loading="urlLoading"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn @click.prevent="urlDialog = false">Cancel</v-btn>
+          <v-btn color="primary" @click.prevent="loadFromUrl">Load</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 <script>
 import axios from "axios";
+import {useProfilesStore} from "@/stores/profiles";
+import {mapState} from "pinia";
 
 export default {
   props: {
@@ -66,6 +68,9 @@ export default {
       type: String,
       default: '.yml,.yaml,.json,.jsonld,.json-ld,text/yaml,application/json,application/x-yaml,application/ld+json',
     },
+    profileRoles: {
+      type: [Array, Boolean],
+    },
   },
   data() {
     return {
@@ -74,6 +79,9 @@ export default {
       urlErrors: [],
       urlLoading: false,
     };
+  },
+  beforeCreate() {
+    this.profilesStore = useProfilesStore();
   },
   methods: {
     clickedOption(func) {
@@ -104,8 +112,8 @@ export default {
       this.urlLoading = true;
       this.urlErrors = [];
       axios.get(this.url, {
-          responseType: 'text'
-        })
+        responseType: 'text'
+      })
         .then(resp => {
           console.log(resp);
           this.$emit('change', resp.data);
@@ -130,15 +138,27 @@ export default {
     },
   },
   computed: {
+    ...mapState(useProfilesStore, ['profiles']),
     menuOptions() {
       const opts = [];
       if (this.showFile) {
-        opts.push({ icon: 'file', text: 'File on your computer', click: 'showFilePicker' });
+        opts.push({icon: 'file', text: 'File on your computer', click: 'showFilePicker'});
       }
       if (this.showUrl) {
-        opts.push({ icon: 'web', text: 'URL', click: 'showLoadUrlDialog' })
+        opts.push({icon: 'web', text: 'URL', click: 'showLoadUrlDialog'})
       }
       return opts;
+    },
+    filteredProfiles() {
+      if (!this.profileRoles) {
+        return [];
+      }
+      if (this.profileRoles === true) {
+        return this.profiles;
+      }
+      return Object.entries(this.profiles)
+        .filter(([, v]) => Object.keys(v.artifacts).some(r => this.profileRoles.indexOf(r) >= 0))
+        .map(([k, v]) => ({...v, uri: k}));
     },
   },
 }

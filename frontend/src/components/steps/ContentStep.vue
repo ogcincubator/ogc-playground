@@ -2,6 +2,7 @@
   <source-loader
       @change="sourceLoaderChanged"
       class="mb-4"
+      :profile-roles="['http://www.w3.org/ns/dx/prof/role/validation']"
   />
   <yaml-json-editor
       :model-value="step.contents"
