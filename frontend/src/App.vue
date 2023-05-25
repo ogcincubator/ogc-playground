@@ -34,7 +34,7 @@
 </template>
 
 <script>
-import JsonUplift from './components/JsonUplift2.vue';
+import JsonUplift from './components/JsonUplift.vue';
 import PlaceholderComponent from './components/PlaceholderComponent.vue';
 import logoUrl from '@/assets/logo.png';
 

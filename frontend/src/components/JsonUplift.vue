@@ -1,423 +1,457 @@
 <template>
   <v-container>
     <v-row>
-      <v-col cols="12" class="text-right">
-        <v-menu>
-          <template v-slot:activator="{ props }">
-            <v-btn color="primary" v-bind="props" append-icon="mdi-menu-down" class="mr-2">
-              Examples
-            </v-btn>
-          </template>
-          <v-list>
-            <v-list-item
-                v-for="(example, index) in filteredExamples"
-                :key="index"
-                @click="loadExample(example)"
-            >
-              <v-list-item-title>{{ example.title }}</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
-        <v-menu>
-          <template v-slot:activator="{ props }">
-            <v-btn color="primary" v-bind="props" append-icon="mdi-menu-down">
-              Help links
-            </v-btn>
-          </template>
-          <v-list>
-            <v-list-item
-                v-for="(helpItem, index) in helpItems"
-                :key="index"
-                :href="helpItem.link"
-                target="_blank"
-            >
-              <v-list-item-title>
-                {{ helpItem.title }}
-                <v-icon>mdi-open-in-new</v-icon>
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
-      </v-col>
-    </v-row>
-    <v-row>
-      <v-col>
-        <process-pill :start-marker="false">
-          Hola
+      <v-col class="d-flex justify-start flex-wrap">
+        <process-pill
+            v-for="(step, idx) in steps"
+            :key="idx"
+            :bg-color="stepBgColors[step.type]"
+            :active="activeStepIdx === idx"
+            @click.prevent="activeStepIdx = idx"
+            :start-marker="step.type !== 'input'"
+            :end-marker="step.type !== 'output'"
+            :opacity="step.pending ? 0.4 : 1.0"
+            class="step"
+            :class="{ active: activeStepIdx === idx }"
+        >
+          <v-progress-circular v-if="step.loading" indeterminate size="20" class="mr-1"/>
+          <v-icon>{{ stepIcons[step.type] }}</v-icon>
+          {{ step.errors && step.errors.length ? '!' : '' }}
+          {{ step.modified ? '*' : '' }}
+          {{ step.title }}
         </process-pill>
-        <yaml-json-editor
-            v-model="testContent"
-        />
-        {{ testContent }}
+        <v-menu>
+          <template v-slot:activator="{ props }">
+            <v-btn
+              icon="mdi-plus"
+              size="x-small"
+              color="success"
+              v-bind="props"
+              class="ml-1"
+            ></v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item :link="true">
+              <v-list-item-title @click.prevent="addUpliftStep">JSON-LD uplift</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+        <v-btn
+          icon="mdi-play"
+          size="x-small"
+          color="primary"
+          class="ml-5"
+          title="Run full workflow"
+          :disabled="running"
+          :loading="running"
+          @click.prevent="runFullWorkflow"
+        ></v-btn>
+        <v-spacer></v-spacer>
+        <v-btn
+          icon="mdi-delete-sweep"
+          size="x-small"
+          color="error"
+          title="Delete all steps"
+          :disabled="running"
+          @click.prevent="clearWorkflow"
+        ></v-btn>
       </v-col>
     </v-row>
     <v-row>
-      <v-col cols="12" md="6">
-        <div>Uplift definition (YAML)</div>
-        <v-select
-            v-model="yamlContext.type"
-            label="Source"
-            :items="filteredInputSources"
-        ></v-select>
-        <codemirror
-            v-if="yamlContext.type == 'content'"
-            v-model="yamlContext.content"
-            :placeholder="yamlContext.placeholder"
-            :style="{ height: '400px' }"
-            :autofocus="true"
-            :indent-with-tab="true"
-            :tab-size="2"
-            :extensions="yamlExtensions"
-        />
-        <v-text-field
-            v-if="yamlContext.type == 'url'"
-            v-model="yamlContext.url"
-            label="Uplift definition URL"
-            placeholder="https://..."
-        ></v-text-field>
-        <v-alert v-if="yamlContext.type == 'url'" type="info">
-          Uplift definition URLs must match the following pattern(s):
-          <ul>
-            <li class="ml-6" v-for="(r, index) in remoteFetchRegex" :key="index"><code>{{r}}</code></li>
-          </ul>
-        </v-alert>
-        <v-file-input
-            v-if="yamlContext.type == 'file'"
-            v-model="yamlContext.file"
-            label="YAML context definition file"
-        ></v-file-input>
-        <div class="mt-2">
-          <v-alert v-if="remoteContextFetchType == 'disabled'" type="warning">
-            Remote context URL imports are disabled.
-          </v-alert>
-          <v-alert v-if="remoteContextFetchType == 'open'" type="info">
-            Remote context URL imports are enabled.
-          </v-alert>
-          <v-alert v-if="remoteContextFetchType == 'whitelist'" type="info">
-            Remote context URL imports are limited to the following pattern(s):
-            <ul>
-              <li class="ml-6" v-for="(r, index) in remoteContextFetchWhitelist" :key="index"><code>{{ r }}</code></li>
-            </ul>
-          </v-alert>
-        </div>
-      </v-col>
-      <v-col cols="12" md="6">
-        <div>JSON content</div>
-        <v-select
-            v-model="jsonContent.type"
-            label="Source"
-            :items="filteredInputSources"
-        ></v-select>
-        <codemirror
-            v-if="jsonContent.type == 'content'"
-            v-model="jsonContent.content"
-            :placeholder="jsonContent.placeholder"
-            :style="{ height: '400px' }"
-            :indent-with-tab="true"
-            :tab-size="2"
-            :extensions="jsonExtensions"
-        />
-        <v-text-field
-            v-if="jsonContent.type == 'url'"
-            v-model="jsonContent.url"
-            label="JSON document URL"
-            placeholder="https://..."
-        ></v-text-field>
-        <v-alert v-if="jsonContent.type == 'url'" type="info">
-          JSON document URLs must match the following pattern(s):
-          <ul>
-            <li class="ml-6" v-for="(r, index) in remoteFetchRegex" :key="index"><code>{{r}}</code></li>
-          </ul>
-        </v-alert>
-        <v-file-input
-            v-if="jsonContent.type == 'file'"
-            v-model="jsonContent.file"
-            label="JSON input file"
-        ></v-file-input>
-      </v-col>
-    </v-row>
-    <v-row justify="center">
-      <v-col class="text-center" xs="6" sm="4">
-        <v-btn @click.prevent="uplift" :disabled="!canSubmit" :loading="processing" prepend-icon="mdi-play">JSON Uplift</v-btn>
-      </v-col>
-    </v-row>
-    <v-row v-if="result" class="result">
       <v-col>
-        <v-row no-gutters>
-          <v-col cols="12" v-if="resultError">
-            <div class="text-red-lighten-1">
-              {{ resultError }}
-            </div>
+        <v-row>
+          <v-col>
+            <h2>
+              {{ activeStep.title }}
+              <small>(Step {{ activeStepIdx + 1 }})</small>
+              <span v-if="activeStepIdx !== 0 && activeStepIdx !== steps.length - 1">
+                <v-btn
+                    v-if="canRunStep"
+                    class="ml-5"
+                    size="x-small"
+                    color="primary"
+                    title="Run step"
+                    :disabled="running"
+                    @click.prevent="runStep(activeStepIdx, true)"
+                    icon="mdi-play"
+                ></v-btn>
+                <v-btn
+                    v-if="!activeStep.pending"
+                    class="ml-1"
+                    size="x-small"
+                    title="View output"
+                    @click.prevent="activeStepOutputDialog = true"
+                    icon="mdi-magnify"
+                ></v-btn>
+                <v-btn
+                    class="ml-5"
+                    size="x-small"
+                    color="error"
+                    title="Delete step"
+                    @click.prevent="deleteStep"
+                    icon="mdi-delete"
+                ></v-btn>
+              </span>
+            </h2>
           </v-col>
         </v-row>
-        <v-row no-gutters>
-          <v-col sm="9" md="6" v-if="!resultError">
-            <v-select
-                v-model="resultFormat"
-                label="Output format"
-                :items="resultFormats"
-                :disabled="processing"
+        <v-row v-if="activeStep.errors && activeStep.errors.length">
+          <v-col class="text-error">
+            <p>
+              The following errors were encountered while running this step:
+            </p>
+            <ul>
+              <li v-for="(err, idx) in activeStep.errors" :key="idx">
+                {{ err }}
+              </li>
+            </ul>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col v-if="activeStep.type !== 'output'">
+            <component
+              :is="activeStepComponent"
+              :step="activeStep"
+              @update="updateActiveStep"
             >
-            </v-select>
+            </component>
+            <v-dialog
+              v-model="activeStepOutputDialog"
+              width="90%"
+            >
+              <v-card>
+                <v-card-text>
+                  <result-viewer
+                    :formats="outputFormats"
+                    :output="activeStep.output"
+                    v-model:format="selectedOutputFormat"
+                  />
+                </v-card-text>
+                <v-card-actions>
+                  <v-spacer></v-spacer>
+                  <v-btn @click.prevent="activeStepOutputDialog = false">Close</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
           </v-col>
-          <v-col sm="3" md="6" class="text-right">
-            <v-tooltip :text="copyToClipboardTooltip">
-              <template v-slot:activator="{ props }">
-                <v-btn v-bind="props" @click.prevent="copyToClipboard" :icon="copyToClipboardIcon"></v-btn>
-              </template>
-            </v-tooltip>
-          </v-col>
-        </v-row>
-        <v-row no-gutters>
-          <v-col v-if="!resultError">
-            <v-textarea
-                ref="resultText"
-                variant="filled"
-                class="output"
-                v-model="result[resultFormat]"
-                :rows="15"
-                :disabled="processing"
-                :class="{ 'fade-loading': processing }"
-            ></v-textarea>
+          <v-col v-else>
+            <result-viewer
+                :formats="outputFormats"
+                :output="activeStep.output"
+                v-model:format="selectedOutputFormat"
+              />
           </v-col>
         </v-row>
       </v-col>
     </v-row>
   </v-container>
 </template>
-
 <script>
-import {Codemirror} from 'vue-codemirror';
-import {StreamLanguage} from '@codemirror/language';
-import {yaml} from '@codemirror/legacy-modes/mode/yaml';
-import {json as cmJson} from '@codemirror/lang-json';
-import axios from 'axios';
-import jszip from 'jszip';
-import examples from '@/assets/json-uplift-examples.json';
-import YamlJsonEditor from "@/components/YamlJsonEditor";
 import ProcessPill from "@/components/ProcessPill";
+import YamlJsonEditor from "@/components/YamlJsonEditor";
+import axios from "axios";
+import jszip from "jszip";
+import ResultViewer from "@/components/ResultViewer";
+import jsYaml from "js-yaml";
+import { debounce } from 'lodash';
+import ContentStep from "@/components/steps/ContentStep.vue";
 
 const BACKEND_URL = window.ogcPlayground.BACKEND_URL;
+const LS_KEY_STATUS = 'ogc-playground.v2.status';
+
+const STEP_COMPONENTS = {
+  'input': ContentStep,
+  'uplift': ContentStep,
+};
 
 export default {
-  name: 'JsonUplift',
   components: {
-    ProcessPill,
+    ResultViewer,
     YamlJsonEditor,
-    Codemirror,
+    ProcessPill,
   },
-  data: () => ({
-    testContent: '',
-    processing: false,
-    inputSources: [
-      {value: 'content', title: 'Text content'},
-      {value: 'file', title: 'File'},
-      {value: 'url', title: 'URL'},
-    ],
-    yamlContext: {
-      type: 'content',
-      content: '',
-      file: [],
-      url: null,
-      placeholder: "transform:\n  - 'jq expression'\n\ncontext:\n  '$': {...}",
+  data() {
+    const defaultSteps = [{
+      type: 'input',
+      title: 'Input',
+      contents: '',
+      mode: 'json',
+      modified: false,
     },
-    yamlExtensions: [
-      StreamLanguage.define(yaml),
-    ],
-    jsonContent: {
-      content: '',
-      file: [],
-      url: null,
-      placeholder: '{\n  "property": "value"\n}',
-    },
-    jsonExtensions: [
-      cmJson(),
-    ],
-    resultFormats: [
-      {value: 'ttl', title: 'Turtle', fn: 'ttl.ttl'},
-      {value: 'json', title: 'Uplifted JSON-LD', fn: 'uplifted.jsonld'},
-      {value: 'expanded', title: 'Expanded JSON-LD', fn: 'expanded.jsonld'},
-    ],
-    resultFormat: 'ttl',
-    result: null,
-    resultError: null,
-    remoteFetchRegex: null,
-    examples,
-    copyToClipboardIcon: 'mdi-content-copy',
-    copyToClipboardTimeout: null,
-    copyToClipboardTooltip: 'Copy result to clipboard',
-    helpItems: [
       {
-        title: 'JSON-LD uplift tutorial',
-        link: 'https://opengeospatial.github.io/ogc-na-tools/tutorials/#how-to-create-a-json-ld-uplift-context-definition',
+        type: 'output',
+        title: 'Output',
+        contents: '',
+        pending: true,
+        output: null,
       },
-      {
-        title: 'ingest_json.py documentation',
-        link: 'https://opengeospatial.github.io/ogc-na-tools/reference/ogc/na/ingest_json/',
+    ];
+    return {
+      defaultSteps,
+      steps: JSON.parse(JSON.stringify(defaultSteps)),
+      stepIcons: {
+        input: 'mdi-import',
+        uplift: 'mdi-database-arrow-up-outline',
+        output: 'mdi-export',
       },
-      {
-        title: 'Sample context definition',
-        link: 'https://opengeospatial.github.io/ogc-na-tools/examples/#sample-json-ld-uplifting-context',
+      stepBgColors: {
+        input: '#00b1ff',
+        uplift: '#6200ee',
+        output: '#00695C',
       },
-      {
-        title: 'JSON-LD 1.1 specification',
-        link: 'https://www.w3.org/TR/json-ld11/',
-      },
-      {
-        title: 'JSON-LD Playground',
-        link: 'https://json-ld.org/playground/',
-      },
-    ],
-    remoteContextFetchType: null,
-    remoteContextFetchWhitelist: null,
-  }),
+      activeStepIdx: 0,
+      oldStepContents: '',
+      outputFormats: [
+        {value: 'ttl', title: 'Turtle', fn: 'ttl.ttl'},
+        {value: 'json', title: 'Uplifted JSON-LD', fn: 'uplifted.jsonld'},
+        {value: 'expanded', title: 'Expanded JSON-LD', fn: 'expanded.jsonld'},
+      ],
+      selectedOutputFormat: null,
+      activeStepOutputDialog: false,
+    };
+  },
+  created() {
+    this.debouncedSaveStatus = debounce(() => {
+        const status = {
+          steps: this.steps,
+          selectedOutputFormat: this.selectedOutputFormat,
+        };
+        localStorage.setItem(LS_KEY_STATUS, JSON.stringify(status));
+      }, 2000);
+  },
+  beforeUnmount() {
+    this.debouncedSaveStatus.cancel();
+  },
   mounted() {
-    this.yamlContext.type = localStorage.getItem("ogcPlayground.lastContextType") || 'content';
-    this.yamlContext.content = localStorage.getItem("ogcPlayground.lastContext") || '';
-    this.yamlContext.url = localStorage.getItem("ogcPlayground.lastContextUrl") || '';
-    this.jsonContent.type = localStorage.getItem("ogcPlayground.lastJsonType") || 'content';
-    this.jsonContent.content = localStorage.getItem("ogcPlayground.lastJson") || '';
-    this.jsonContent.url = localStorage.getItem("ogcPlayground.lastJsonUrl") || '';
-    this.resultFormat = localStorage.getItem("ogcPlayground.lastOutputFormat") || 'ttl';
-    axios.get(`${BACKEND_URL}/remote-fetch`)
-        .then(resp => {
-          this.remoteFetchRegex = resp.data.enabled ? resp.data.regex : false;
-          if (resp.data.context) {
-            this.remoteContextFetchType = resp.data.context.type;
-            this.remoteContextFetchWhitelist = resp.data.context.whitelist;
-          }
-        })
-        .catch(err => {
-          console.log('Error obtaining remote fetch configuration', err);
-        });
-  },
-  computed: {
-    canSubmit() {
-      let result = true;
-      const remoteRegex = this.remoteFetchRegex && this.remoteFetchRegex.length
-          ? this.remoteFetchRegex.map(e => new RegExp(e))
-          : null;
-      const remoteRegexMatches = s => !!s && remoteRegex && remoteRegex.some(r => s.match(r));
-      switch (this.jsonContent.type) {
-        case 'content':
-          result &= this.jsonContent.content && !!this.jsonContent.content.trim();
-          break;
-        case 'url':
-          result &= remoteRegexMatches(this.jsonContent.url);
-          break;
-        case 'file':
-          return !!this.jsonContent.file.length;
+    const savedStatusJson = localStorage.getItem(LS_KEY_STATUS);
+    if (savedStatusJson) {
+      try {
+        const savedStatus = JSON.parse(savedStatusJson);
+        if (Array.isArray(savedStatus.steps)) {
+          this.steps.length = 0;
+          this.steps.push(...savedStatus.steps);
+        }
+        if (savedStatus.selectedOutputFormat
+            && this.outputFormats.some(v => v.value === savedStatus.selectedOutputFormat)) {
+          this.selectedOutputFormat = savedStatus.selectedOutputFormat;
+        }
+      } catch {
+        // Clear key
+        localStorage.removeItem(LS_KEY_STATUS);
       }
-      if (this.yamlContext.type == 'url') {
-        result &= remoteRegexMatches(this.yamlContext.url);
-      }
-      return result;
-    },
-    filteredInputSources() {
-      return this.remoteFetchRegex === false
-          ? this.inputSources.filter(i => i.value != 'url')
-          : this.inputSources;
-    },
-    filteredExamples() {
-      return this.remoteFetchRegex === false
-          ? this.examples.filter(e => !e.contextUrl && !e.contentUrl)
-          : this.examples;
-    },
+    }
   },
   methods: {
-    loadExample(example) {
-      if (example.contextUrl) {
-        this.yamlContext.url = example.contextUrl;
-        this.yamlContext.type = 'url';
-      } else {
-        this.yamlContext.content = example.context;
-        this.yamlContext.type = 'content';
+    addUpliftStep() {
+      this.steps.splice(this.steps.length - 1, 0,{
+        type: 'uplift',
+        title: `Uplift step ${this.steps.length - 1}`,
+        pending: true,
+        mode: 'yaml',
+        contents: '',
+        modified: false,
+        output: null,
+        running: false,
+        errors: [],
+      });
+      this.activeStepIdx = this.steps.length - 2;
+    },
+    getStepStyle(step) {
+      const style = {};
+      if (step.pending) {
+        style.opacity = 0.4;
       }
-      if (example.contentUrl) {
-        this.jsonContent.url = example.contentUrl;
-        this.jsonContent.type = 'url';
-      } else {
-        this.jsonContent.content = example.content;
-        this.jsonContent.type = 'content';
+      return style;
+    },
+    deleteStep() {
+      this.steps.splice(this.activeStepIdx, 1);
+      this.activeStepIdx--;
+    },
+    async runFullWorkflow() {
+      for (let i = 0; i < this.steps.length; i++) {
+        this.activeStepIdx = i;
+        const result = await this.runStep(i);
+        if (!result) {
+          return false;
+        }
       }
     },
-    uplift() {
-      const formData = new FormData();
-      switch (this.yamlContext.type) {
-        case 'content':
-          localStorage.setItem("ogcPlayground.lastContext", this.yamlContext.content);
-          formData.append('context', this.yamlContext.content);
-          break;
-        case 'url':
-          localStorage.setItem("ogcPlayground.lastContextUrl", this.yamlContext.url);
-          formData.append('contexturl', this.yamlContext.url);
-          break;
-        case 'file':
-          formData.append('context', this.yamlContext.file[0]);
-          break;
+    async runStep(idx, force) {
+      if (idx === this.steps.length - 1) {
+        return true;
       }
-
-      switch (this.jsonContent.type) {
-        case 'content':
-          localStorage.setItem("ogcPlayground.lastJson", this.jsonContent.content);
-          formData.append('json', this.jsonContent.content);
-          break;
-        case 'url':
-          localStorage.setItem("ogcPlayground.lastJsonUrl", this.jsonContent.url);
-          formData.append('jsonurl', this.jsonContent.url);
-          break;
-        case 'file':
-          formData.append('json', this.jsonContent.file[0]);
-          break;
+      const step = this.steps[idx], prevStep = idx === 0 ? null : this.steps[idx - 1];
+      if (!step.pending && !step.modified && !force) {
+        return true;
       }
+      step.loading = true;
 
-      localStorage.setItem("ogcPlayground.lastContextType", this.yamlContext.type);
-      localStorage.setItem("ogcPlayground.lastJsonType", this.jsonContent.type);
-      localStorage.setItem("ogcPlayground.lastOutputFormat", this.resultFormat);
+      if (idx === 0) {
+        // input step - validate JSON / YAML
+        try {
+          const inputData = jsYaml.load(step.contents);
+          if (typeof inputData !== 'object') {
+            step.errors = [
+              'Input data must be an object or array'
+            ];
+            step.loading = false;
+            return false;
+          }
+        } catch {
+          step.errors = [
+            'Input data is not a valid JSON or YAML document'
+          ];
+          step.loading = false;
+          return false;
+        }
+        if (this.steps.length > 2) {
+          // do not go any further
+          step.modified = false;
+          step.loading = false;
+          return true;
+        }
+      }
+      if (step.type === 'uplift' || step.type === 'input') {
+        // Uplift step OR input step and no other workflow steps
+        let inputData;
+        switch (idx) {
+          case 0: inputData = step.contents; break;
+          case 1: inputData = prevStep.contents; break;
+          default: inputData = prevStep.output['json'];
+        }
+        const upliftConfig = idx === 0 ? '' : step.contents;
 
-      formData.append('output', 'all');
-      this.processing = true;
-      this.resultError = null;
-      axios.post(`${BACKEND_URL}/json-uplift`, formData, {
-            responseType: 'blob'
-          })
-          .then(res => jszip.loadAsync(res.data))
-          .then(zipfile => Promise.all(this.resultFormats.map(async fmt => [fmt.value, await zipfile.file(fmt.fn).async('string')])))
-          .then(r => this.result = Object.fromEntries(r))
-          .catch(err => {
-            console.log(err);
-            this.result = null;
-            const detail = err.response?.data?.detail;
-            if (detail.msg) {
-              this.resultError = detail.msg;
-              if (detail.cause) {
-                const msg = detail.cause.split('|', 2)[1];
-                this.resultError += ': ' + msg;
+        const formData = new FormData();
+        formData.append('output', 'all');
+        formData.append('context', upliftConfig);
+        formData.append('json', inputData);
+        try {
+          const result = await axios.post(`${BACKEND_URL}/json-uplift`, formData, {
+              responseType: 'blob'
+            })
+            .then(res => jszip.loadAsync(res.data))
+            .then(zipfile => Promise.all(this.outputFormats.map(async fmt => [fmt.value, await zipfile.file(fmt.fn).async('string')])))
+            .then(r => this.result = Object.fromEntries(r))
+            .finally(() => {
+              step.loading = false;
+            });
+          step.pending = false;
+          step.modified = false;
+          step.output = result;
+
+          if (idx === this.steps.length -2) {
+            this.steps[idx + 1].pending = false;
+            this.steps[idx + 1].output = result;
+          }
+
+          return true;
+        } catch (err) {
+          console.log(err);
+
+          const errText = await err.response.data.text();
+          let errMsg = null;
+          try {
+            const errObj = JSON.parse(errText);
+            if (errObj?.detail?.msg) {
+              errMsg = errObj.detail.msg;
+              if (errObj?.detail?.cause) {
+                errMsg += ': ' + errObj.detail.cause.split('|', 2)[1];
               }
-            } else {
-              this.resultError = err;
+            } else if (err.message) {
+              errMsg = err.message;
             }
-          })
-          .finally(() => this.processing = false);
+          } catch {
+            // ignore
+          }
+
+          if (!errMsg) {
+            errMsg = 'Unknown error';
+          }
+
+          step.errors = [errMsg];
+
+          return false;
+        }
+      } else {
+        return true;
+      }
     },
-    copyToClipboard() {
-      clearTimeout(this.copyToClipboardTimeout);
-      this.copyToClipboardIcon = 'mdi-check-bold';
-      this.copyToClipboardTooltip = 'Copied!'
-      this.copyToClipboardTimeout = setTimeout(() => {
-        this.copyToClipboardIcon = 'mdi-content-copy';
-        this.copyToClipboardTooltip = 'Copy result to clipboard';
-      }, 2000);
-      navigator.clipboard.writeText(this.result[this.resultFormat]);
+    saveStatus() {
+      this.debouncedSaveStatus.call(this);
+    },
+    updateActiveStep(values) {
+      Object.entries(values).forEach(([k, v]) => this.activeStep[k] = v);
+    },
+    clearWorkflow() {
+      this.steps.splice(0, Infinity, ...JSON.parse(JSON.stringify(this.defaultSteps)));
+      this.saveStatus();
+    },
+  },
+  computed: {
+    activeStep() {
+        return this.steps[this.activeStepIdx];
+    },
+    running() {
+      return this.steps.some(s => s.loading);
+    },
+    canRunStep() {
+      return this.activeStepIdx > 0 && this.activeStepIdx < this.steps.length - 1
+          && this.steps.slice(1, this.activeStepIdx).every(s => !s.pending);
+    },
+    inputStep() {
+      return this.steps[0];
+    },
+    outputStep() {
+      return this.steps[this.steps.length - 1];
+    },
+    activeStepComponent() {
+      return STEP_COMPONENTS[this.activeStep.type];
+    },
+  },
+  watch: {
+    activeStep: {
+      handler(newv, oldv) {
+        if (newv !== oldv) {
+          this.oldStepContents = newv.contents;
+          return;
+        }
+        if (newv.contents === this.oldStepContents) {
+          return;
+        }
+        this.oldStepContents = newv.contents;
+        this.activeStep.errors = [];
+        this.activeStep.modified = true;
+        this.saveStatus();
+        if (this.activeStepIdx > 0) {
+          this.activeStep.pending = true;
+        }
+        this.steps.forEach((s, i) => {
+          if (i > this.activeStepIdx) {
+            s.errors = [];
+            s.pending = true;
+            s.output = null;
+          }
+        });
+      },
+      deep: true,
     },
   },
 }
 </script>
 <style>
-.fade-loading {
-  opacity: 0.5;
+ul {
+  padding-left: 1em;
 }
-.result textarea {
-  font-family: monospace;
+.step.active {
+  position: relative;
+}
+.step.active::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  width: 70%;
+  left: 15%;
+  background: #666;
+  height: 3px;
 }
 </style>
