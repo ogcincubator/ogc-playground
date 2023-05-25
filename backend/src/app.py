@@ -1,11 +1,11 @@
+from __future__ import annotations
+
 import io
 import json
-import logging
+import logging.config
 import os
 import re
-import urllib.error
 import zipfile
-from ctypes.wintypes import RECT
 from datetime import datetime
 from time import time
 from enum import Enum
@@ -20,6 +20,7 @@ from ogc.na.provenance import ProvenanceMetadata, FileProvenanceMetadata
 from rdflib import Graph
 
 from yaml import load as yaml_load
+
 try:
     from yaml import CLoader as YamlLoader
 except ImportError:
@@ -28,8 +29,8 @@ except ImportError:
 logging.config.fileConfig(Path(__file__).parent / 'logging.conf', disable_existing_loggers=False)
 logger = logging.getLogger('ogc_playground')
 
-_profile_registry: ProfileRegistry = None
-_profiles_ts: float = None
+_profile_registry: ProfileRegistry | None = None
+_profiles_ts: float | None = None
 PROFILE_SOURCES = ogcnautil.glob_list_split(os.environ.get('PROFILE_SOURCES', ''))
 PROFILE_LOCAL_ARTIFACTS_MAPPINGS: dict[str, str] = json.loads(os.environ.get('PROFILE_LOCAL_ARTIFACTS_MAPPINGS', '{}'))
 PROFILES_TTL_SECONDS = 60
@@ -108,8 +109,8 @@ async def index():
 
 
 @app.get('/remote-fetch',
-         response_description='an object with a boolean `enabled` property and, optionally, a `regex`' \
-                              'property to match against potential enpoints',
+         response_description='an object with a boolean `enabled` property and, optionally, a `regex`'
+                              'property to match against potential endpoints',
          )
 async def remote_fetch():
     """
@@ -117,7 +118,7 @@ async def remote_fetch():
     external JSON files) is enabled and, if so, what endpoints are allowed (using
     a regular expression).
     :return: an object with a boolean `enabled` property and, optionally, a `regex`
-      property to match against potential enpoints
+      property to match against potential endpoints
     """
     r = {'enabled': bool(REMOTE_FETCH_ALLOWED)}
     if REMOTE_FETCH_ALLOWED:
@@ -247,7 +248,7 @@ async def get_profiles() -> dict:
         str(uri): {
             'label': profile.label,
             'token': profile.token,
-            'roles': set(profile.artifacts.keys()),
+            'artifacts': profile.artifacts,
         } for uri, profile in registry.profiles.items()
     }
 
@@ -305,7 +306,7 @@ def _uplift_generate_all(g: Graph, expanded: dict, uplifted: dict, prov_metadata
 
 def _get_profile_registry() -> ProfileRegistry:
     if not PROFILE_SOURCES:
-        return []
+        return ProfileRegistry([])
     now = time()
     global _profile_registry
     if not _profile_registry or not _profiles_ts or now - _profiles_ts >= PROFILES_TTL_SECONDS:
@@ -315,4 +316,3 @@ def _get_profile_registry() -> ProfileRegistry:
             ignore_artifact_errors=True,
         )
     return _profile_registry
-
