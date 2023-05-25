@@ -189,8 +189,10 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                     }
                 )
         jsondoc = yaml_load(jsondoc, YamlLoader)
-        g, expanded, uplifted = ingest_json.generate_graph(jsondoc, context, base,
+        uplift_result = ingest_json.generate_graph(jsondoc, context, base,
                                                            fetch_url_whitelist=REMOTE_CONTEXT_FETCH_WHITELIST)
+        g = uplift_result.graph
+        uplifted = uplift_result.uplifted_json
 
         if provenance:
             prov_metadata = ProvenanceMetadata(
@@ -203,11 +205,9 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
             prov_metadata = None
 
         if output == JsonUpliftOutputType.ALL:
-            return Response(_uplift_generate_all(g, expanded, uplifted, prov_metadata), media_type='application/zip')
+            return Response(_uplift_generate_all(g, uplifted, prov_metadata), media_type='application/zip')
         if output == JsonUpliftOutputType.TURTLE:
             return Response(_uplift_generate_ttl(g, prov_metadata), media_type='text/turtle')
-        elif output == JsonUpliftOutputType.EXPANDED:
-            return _uplift_generate_jsonld(expanded, prov_metadata)
         else:
             return uplifted
     except HTTPException:
@@ -291,14 +291,12 @@ def _uplift_generate_jsonld(expanded: dict, prov_metadata: ProvenanceMetadata) -
     return expanded
 
 
-def _uplift_generate_all(g: Graph, expanded: dict, uplifted: dict, prov_metadata: ProvenanceMetadata):
+def _uplift_generate_all(g: Graph, uplifted: dict, prov_metadata: ProvenanceMetadata):
     ttl = _uplift_generate_ttl(g, prov_metadata)
-    expanded = _uplift_generate_jsonld(expanded, prov_metadata)
 
     zbuf = io.BytesIO()
     with zipfile.ZipFile(zbuf, 'a', zipfile.ZIP_DEFLATED, False) as zfile:
         zfile.writestr('ttl.ttl', ttl)
-        zfile.writestr('expanded.jsonld', json.dumps(expanded, indent=2))
         zfile.writestr('uplifted.jsonld', json.dumps(uplifted, indent=2))
 
     return zbuf.getvalue()
