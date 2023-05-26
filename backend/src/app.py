@@ -190,7 +190,7 @@ async def json_uplift(context: bytes = File('', description='YAML contents for t
                 )
         jsondoc = yaml_load(jsondoc, YamlLoader)
         uplift_result = ingest_json.generate_graph(jsondoc, context, base,
-                                                           fetch_url_whitelist=REMOTE_CONTEXT_FETCH_WHITELIST)
+                                                   fetch_url_whitelist=REMOTE_CONTEXT_FETCH_WHITELIST)
         g = uplift_result.graph
         uplifted = uplift_result.uplifted_json
 

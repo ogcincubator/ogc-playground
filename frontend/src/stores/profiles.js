@@ -1,15 +1,19 @@
 import {defineStore} from 'pinia';
-import {onMounted, ref} from "vue";
+import {ref} from "vue";
 import profileService from "@/services/profile.service";
+import { createDataReadyPromise } from '@/util';
 
 export const useProfilesStore = defineStore('profiles', () => {
 
   const profiles = ref({});
+  const dataReady = ref(false);
+  const dataReadyPromise = createDataReadyPromise(dataReady);
 
-  onMounted(() => {
-    profileService.getProfiles()
-      .then(p => profiles.value = p);
-  });
+  profileService.getProfiles()
+    .then(p => {
+      profiles.value = p;
+      dataReady.value = true;
+    });
 
-  return { profiles };
+  return { profiles, dataReady, dataReadyPromise };
 })

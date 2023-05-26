@@ -22,9 +22,20 @@
         </v-row>
         <v-row>
           <v-col>
-            <v-tabs v-model="activeTab">
+            <v-tabs v-model="activeTab" v-if="dataStatus === 'ready'">
               <v-tab v-for="(tab, index) in tabs" :key="index" :value="index">{{ tab.label }}</v-tab>
             </v-tabs>
+            <v-overlay
+              :model-value="dataStatus !== 'ready'"
+              class="align-center justify-center text-center"
+            >
+              <v-progress-circular
+                color="primary"
+                indeterminate
+                size="64"
+              ></v-progress-circular>
+              <div class="text-h5 mt-3">Loading data&hellip;</div>
+            </v-overlay>
           </v-col>
         </v-row>
       </v-container>
@@ -34,6 +45,8 @@
 </template>
 
 <script>
+import {useProfilesStore} from "@/stores/profiles";
+import {useUpliftStore} from "@/stores/uplift";
 import JsonUplift from './components/JsonUplift.vue';
 import PlaceholderComponent from './components/PlaceholderComponent.vue';
 import logoUrl from '@/assets/logo.png';
@@ -54,7 +67,23 @@ export default {
     ],
     activeTab: 0,
     logoUrl,
+    dataStatus: 'loading',
   }),
+
+  beforeCreate() {
+    this.allStores = [useProfilesStore(), useUpliftStore()];
+  },
+
+  mounted() {
+    Promise.all(this.allStores.filter(s => s.dataReadyPromise).map(s => s.dataReadyPromise))
+      .then(r => {
+        if (r.every(v => v)) {
+          this.dataStatus = 'ready';
+        } else {
+          this.dataStatus = 'error';
+        }
+      });
+  },
 
   computed: {
     activeComponent() {
