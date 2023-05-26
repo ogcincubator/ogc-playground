@@ -39,7 +39,9 @@
           </v-col>
         </v-row>
       </v-container>
-      <component :is="activeComponent" :tab-title="activeComponentTitle"></component>
+      <keep-alive v-if="dataStatus === 'ready'">
+        <component :is="activeComponent" :tab-title="activeComponentTitle"></component>
+      </keep-alive>
     </v-main>
   </v-app>
 </template>
@@ -82,6 +84,7 @@ export default {
         } else {
           this.dataStatus = 'error';
         }
+        console.log('Data status:', this.dataStatus);
       });
   },
 
