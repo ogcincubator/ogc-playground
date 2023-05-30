@@ -96,8 +96,7 @@ class BaseStep {
 
   get serializableFields() {
     return [
-      'type', 'title',  'contents', 'output',
-      'pending', 'modified', 'errors',
+      'type', 'title',  'contents',
       ...(this._serializableFields || [])
     ];
   }

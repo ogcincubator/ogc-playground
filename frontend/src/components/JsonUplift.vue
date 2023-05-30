@@ -174,6 +174,8 @@ import ContentStep from "@/components/steps/ContentStep.vue";
 import backendService from "@/services/backend.service";
 import upliftSteps from '@/model/upliftSteps';
 import {reactive} from "vue";
+import {mapActions, mapState} from 'pinia';
+import {useGlobalStore} from "@/stores/global";
 
 const LS_KEY_STATUS = 'ogc-playground.v2.status';
 
@@ -227,31 +229,51 @@ export default {
     this.debouncedSaveStatus.cancel();
   },
   mounted() {
-    console.log('mounted');
-    const savedStatusJson = localStorage.getItem(LS_KEY_STATUS);
+    let savedStatusJson, savedStatusOrigin;
+    if (this.hashParams.t === 'u' && this.hashParams.p) {
+      savedStatusJson = this.hashParams.p;
+      savedStatusOrigin = 'params';
+    } else {
+      savedStatusJson = localStorage.getItem(LS_KEY_STATUS);
+      savedStatusOrigin = 'localStorage';
+    }
     if (savedStatusJson) {
       try {
         const savedStatus = JSON.parse(savedStatusJson);
-        if (Array.isArray(savedStatus.steps)) {
+        const savedSteps = savedStatusOrigin === 'params' ? savedStatus : savedStatus.steps;
+        if (Array.isArray(savedSteps)) {
           this.steps.splice(0, Infinity,
-            ...savedStatus.steps.map(upliftSteps.revive));
+              ...savedSteps.map(upliftSteps.revive));
+          if (this.steps.slice(-1)[0].type !== 'OutputStep') {
+            this.steps.push(new upliftSteps.OutputStep());
+          }
         }
+        this.validatePipeline();
         if (savedStatus.selectedOutputFormat
-          && this.outputFormats.some(v => v.value === savedStatus.selectedOutputFormat)) {
+            && this.outputFormats.some(v => v.value === savedStatus.selectedOutputFormat)) {
           this.selectedOutputFormat = savedStatus.selectedOutputFormat;
         }
-      } catch(e) {
-        console.log('Error loading saved status', e)
-        // Clear key
-        localStorage.removeItem(LS_KEY_STATUS);
+        this.saveStatus();
+      } catch (e) {
+        console.log(`Error loading saved status from ${savedStatusOrigin}`, e);
+        if (savedStatusOrigin === 'params') {
+          this.showSnackbar('There was an error loading pipeline from URL', 'error');
+          location.hash = '';
+        } else if (savedStatusOrigin === 'localStorage') {
+          // Clear key
+          this.showSnackbar('There was an error loading the previously used pipeline', 'error');
+          localStorage.removeItem(LS_KEY_STATUS);
+        }
       }
     }
   },
   methods: {
+    ...mapActions(useGlobalStore, ['showSnackbar']),
     addUpliftStep() {
       this.steps.splice(this.steps.length - 1, 0,
         new upliftSteps.UpliftStep(`Uplift step ${this.steps.length - 1}`));
       this.activeStepIdx = this.steps.length - 2;
+      this.saveStatus();
     },
     getStepStyle(step) {
       const style = {};
@@ -263,6 +285,7 @@ export default {
     deleteStep() {
       this.steps.splice(this.activeStepIdx, 1);
       this.activeStepIdx--;
+      this.saveStatus();
     },
     async runFullWorkflow() {
       for (let i = 0; i < this.steps.length; i++) {
@@ -277,7 +300,9 @@ export default {
     async runStep(idx, force = false) {
       const step = this.steps[idx], prevOutput = idx === 0 ? null : this.steps[idx - 1].output;
       console.log("SINGLE", idx, step.type, prevOutput);
-      return await step.run(prevOutput, force);
+      const result = await step.run(prevOutput, force);
+      this.saveStatus();
+      return result;
     },
     saveStatus() {
       this.debouncedSaveStatus.call(this);
@@ -293,12 +318,29 @@ export default {
     },
     exportPipeline() {
       // eslint-disable-next-line no-unused-vars
-      const steps = this.steps.slice(1, -1).map(step => (({ output, ...s}) => s)(step));
+      const steps = this.steps.slice(0, -1);
       const content = encodeURIComponent(JSON.stringify(steps));
-      this.exportPipelineUrl = `${location.origin}${location.pathname}#?pipeline=${content}`;
+      this.exportPipelineUrl = `${location.origin}${location.pathname}#?t=u&p=${content}`;
+    },
+    validatePipeline() {
+      console.log(this.steps);
+      // Check that we have input step > !input && !output step* > output step
+      if (!this.steps || this.steps.length < 2) {
+        throw new Error('Pipeline has less than 2 steps');
+      }
+      if (this.steps[0].type !== 'InputStep') {
+        throw new Error('First step is not input');
+      }
+      if (this.steps.slice(-1)[0].type !== 'OutputStep') {
+        throw new Error('Last step is not output');
+      }
+      if (this.steps.slice(1, -1).some(s => ['InputStep', 'OutputStep'].includes(s.type))) {
+        throw new Error('Intermediate step is output or input');
+      }
     },
   },
   computed: {
+    ...mapState(useGlobalStore, ['hashParams']),
     activeStep() {
       return this.steps[this.activeStepIdx];
     },
