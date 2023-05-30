@@ -43,15 +43,31 @@
         <component :is="activeComponent" :tab-title="activeComponentTitle"></component>
       </keep-alive>
     </v-main>
+    <v-snackbar v-model="snackbar.open" timeout="5000" :color="snackbar.color">
+
+      {{ snackbar.text }}
+
+      <template v-slot:actions>
+        <v-btn @click="snackbar.open = false">Ok</v-btn>
+      </template>
+    </v-snackbar>
   </v-app>
 </template>
 
 <script>
 import {useProfilesStore} from "@/stores/profiles";
 import {useUpliftStore} from "@/stores/uplift";
+import {useGlobalStore} from "@/stores/global";
 import JsonUplift from './components/JsonUplift.vue';
 import PlaceholderComponent from './components/PlaceholderComponent.vue';
 import logoUrl from '@/assets/logo.png';
+import {mapState} from "pinia";
+
+const tabParamValues = {
+  u: 0,
+  b: 1,
+  v: 2,
+};
 
 export default {
   name: 'App',
@@ -63,9 +79,9 @@ export default {
 
   data: () => ({
     tabs: [
-      { label: 'Semantic uplift', component: 'JsonUplift' },
-      { label: 'BB Schema annotation', component: 'PlaceholderComponent' },
-      { label: 'Building block validation', component: 'PlaceholderComponent' },
+      {label: 'Semantic uplift', component: 'JsonUplift'},
+      {label: 'BB Schema annotation', component: 'PlaceholderComponent'},
+      {label: 'Building block validation', component: 'PlaceholderComponent'},
     ],
     activeTab: 0,
     logoUrl,
@@ -73,10 +89,11 @@ export default {
   }),
 
   beforeCreate() {
-    this.allStores = [useProfilesStore(), useUpliftStore()];
+    this.allStores = [useProfilesStore(), useUpliftStore(), useGlobalStore()];
   },
 
   mounted() {
+    this.activeTab = tabParamValues[this.hashParams.t] || 0;
     Promise.all(this.allStores.filter(s => s.dataReadyPromise).map(s => s.dataReadyPromise))
       .then(r => {
         if (r.every(v => v)) {
@@ -89,6 +106,7 @@ export default {
   },
 
   computed: {
+    ...mapState(useGlobalStore, ['hashParams', 'snackbar']),
     activeComponent() {
       return this.tabs[this.activeTab].component;
     },

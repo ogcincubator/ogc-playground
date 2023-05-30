@@ -21,18 +21,13 @@
         </v-btn>
       </v-card-actions>
     </v-card>
-    <v-snackbar v-model="snackbar.open" timeout="5000" :color="snackbar.color">
-
-      {{ snackbar.text }}
-
-      <template v-slot:actions>
-        <v-btn @click="snackbar.open = false">Ok</v-btn>
-      </template>
-    </v-snackbar>
   </v-dialog>
 </template>
 
 <script>
+import {useGlobalStore} from "@/stores/global";
+import {mapActions} from "pinia";
+
 export default {
   props: {
     modelValue:  String,
@@ -43,11 +38,6 @@ export default {
   ],
   data() {
     return {
-      snackbar: {
-        color: 'primary',
-        open: false,
-        text: null,
-      },
       text: '',
     }
   },
@@ -67,6 +57,7 @@ export default {
     }
   },
   methods: {
+    ...mapActions(useGlobalStore, ['showSnackbar']),
     copyToClipboard() {
       if (this.modelValue) {
         navigator?.clipboard?.writeText(this.modelValue)
@@ -79,11 +70,6 @@ export default {
           });
       }
     },
-    showSnackbar(text, color='primary') {
-      this.snackbar.text = text;
-      this.snackbar.color = color;
-      this.snackbar.open = true;
-    }
   },
   watch: {
     modelValue(v) {
