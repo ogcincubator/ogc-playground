@@ -1,28 +1,27 @@
 <template>
   <div>
-    <v-menu>
-      <template v-slot:activator="{ props }">
+    <v-row>
+      <v-col cols="12" lg="3">
+        <v-select
+          label="Input source"
+          :items="inputSources"
+          :model-value="inputSource"
+          @update:model-value="$emit('update:inputSource', $event)"
+        >
+        </v-select>
+      </v-col>
+      <v-col v-if="inputSource === 'contents'">
         <v-btn
           color="primary"
-          v-bind="props"
           class="ml-1"
+          @click="showFilePicker"
         >
-          Load data from...
-          <v-icon>mdi-menu-down</v-icon>
+          Load data from file...
         </v-btn>
-      </template>
-      <v-list density="compact">
-        <v-list-item v-for="opt of menuOptions" :key="opt.text" :link="true">
-          <v-list-item-title v-if="showFile" @click="clickedOption(opt.click)">
-            <v-icon v-if="opt.icon" :icon="'mdi-' + opt.icon"></v-icon>
-            {{ opt.text }}
-          </v-list-item-title>
-        </v-list-item>
-      </v-list>
+      </v-col>
+    </v-row>
 
-      <input type="file" ref="fileField" @change="fileSelected" :accept="fileAccept"/>
-
-    </v-menu>
+    <input type="file" ref="fileField" @change="fileSelected" :accept="fileAccept"/>
 
     <v-dialog
       v-model="urlDialog"
@@ -56,6 +55,10 @@ import {mapState} from "pinia";
 
 export default {
   props: {
+    inputSource: {
+      type: String,
+      validator: v => ['contents', 'url'].includes(v),
+    },
     showFile: {
       type: Boolean,
       default: true,
@@ -78,6 +81,10 @@ export default {
       url: '',
       urlErrors: [],
       urlLoading: false,
+      inputSources: [
+        {value: 'contents', title: 'Text contents'},
+        {value: 'url', title: 'URL'},
+      ]
     };
   },
   beforeCreate() {
@@ -99,7 +106,7 @@ export default {
         const file = files[0];
         const reader = new FileReader();
         reader.onload = (res) => {
-          this.$emit('change', res.target.result);
+          this.$emit('contents', res.target.result);
         };
         reader.onerror = (err) => {
           alert('An error was encountered while reading the file');
@@ -116,7 +123,7 @@ export default {
       })
         .then(resp => {
           console.log(resp);
-          this.$emit('change', resp.data);
+          this.$emit('contents', resp.data);
           this.urlDialog = false;
         })
         .catch(err => {

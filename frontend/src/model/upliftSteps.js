@@ -1,5 +1,6 @@
 import backendService from "@/services/backend.service";
 import jsYaml from "js-yaml";
+import axios from 'axios';
 
 const getErrorMessage = async err => {
   try {
@@ -36,7 +37,7 @@ const revive = (obj) => {
 class BaseStep {
 
   title = '';
-  contents = '';
+  _contents = '';
   pending = true;
   modified = false;
   output = null;
@@ -49,7 +50,7 @@ class BaseStep {
       throw new Error('Abstract class cannot be instantiated');
     }
 
-    Object.defineProperty(this, 'type',{
+    Object.defineProperty(this, 'type', {
       enumerable: true,
       configurable: false,
       get() {
@@ -88,40 +89,141 @@ class BaseStep {
     return true;
   }
 
-  toJSON() {
+  toJSON(excludeFields = null) {
     const serializable = {};
-    this.serializableFields.forEach(k => serializable[k] = this[k]);
+    this.serializableFields
+      .filter(f => !excludeFields || !excludeFields.includes(f))
+      .forEach(k => serializable[k] = this[k]);
     return serializable;
   }
 
   get serializableFields() {
     return [
-      'type', 'title',  'contents',
+      'type', 'title', 'contents',
       ...(this._serializableFields || [])
     ];
   }
+
+  get contents() {
+    return this._contents;
+  }
+
+  set contents(v) {
+    if (this._contents !== v) {
+      this._contents = v;
+      this.modified = true;
+    }
+  }
 }
 
-class InputStep extends BaseStep {
+class BaseContentStep extends BaseStep {
 
-  _serializableFields = ['mode'];
+  _inputSources = ['contents', 'url'];
+  _inputSource = 'contents';
+  _url = null;
+  mode = 'json';
+  _serializableFields = ['contents', 'url', 'mode', 'inputSource'];
+  contentsFetched = false;
+
+  constructor(title) {
+    super(title);
+    if (this.constructor === BaseStep) {
+      throw new Error('Abstract class cannot be instantiated');
+    }
+  }
+
+  get inputSource() {
+    return this._inputSource;
+  }
+
+  set inputSource(v) {
+    if (!v) {
+      return;
+    }
+    if (v === this._inputSource) {
+      return;
+    }
+    if (!this._inputSources.includes(v)) {
+      throw new Error(`Input source "${v}" not in ${this._inputSources}`);
+    }
+    this._inputSource = v;
+    this.modified = true;
+  }
+
+  toJSON(excludeFields = null) {
+    if (!Array.isArray(excludeFields)) {
+      excludeFields = [];
+    }
+    if (this._inputSource === 'contents') {
+      excludeFields.push('url');
+    } else {
+      excludeFields.push('contents');
+    }
+    return super.toJSON(excludeFields);
+  }
+
+  async fetchContents(force = false) {
+    if (!this.modified && this.contentsFetched && !force) {
+      return true;
+    }
+    if (this._inputSource === 'url') {
+      if (!this.url || !this.url.trim()) {
+        this.errors = [
+          'A URL is required'
+        ];
+        return false;
+      }
+      try {
+        const response = await axios.get(this.url, {
+          responseType: "text",
+        });
+        this.contents = response.data;
+        this.errors = [];
+        this.contentsFetched = true;
+        return true;
+      } catch (e) {
+        console.log('Error loading remote URL', this.url, e);
+        this.errors = [
+          'Error loading data from remote URL'
+        ];
+      }
+    }
+    return false;
+  }
+
+  get url() {
+    return this._url;
+  }
+
+  set url(v) {
+    if (v !== this._url) {
+      this._url = v;
+      this.modified = true;
+      this.contentsFetched = false;
+    }
+  }
+
+}
+
+class InputStep extends BaseContentStep {
+
   output = null;
   pending = false;
-  mode = 'json';
 
   constructor() {
     super('Input step');
+    this.mode = 'json';
     Object.defineProperty(this, 'output', {
       enumerable: true,
       get() {
         return {
-        json: this.contents,
+          json: this.contents,
         };
       },
       set() {
         // do nothing
       },
-    })
+    });
   }
 
   get pending() {
@@ -129,9 +231,13 @@ class InputStep extends BaseStep {
   }
 
   async _run() {
+    if (!await this.fetchContents(true)) {
+      return false;
+    }
     try {
       const inputData = jsYaml.load(this.contents);
       if (typeof inputData !== 'object') {
+        console.log('Expected type object, got', typeof inputData)
         this.errors = [
           'Input data must be an object or array'
         ];
@@ -142,6 +248,7 @@ class InputStep extends BaseStep {
       ];
     }
   }
+
 }
 
 class OutputStep extends BaseStep {
@@ -156,16 +263,17 @@ class OutputStep extends BaseStep {
 
 }
 
-class UpliftStep extends BaseStep {
-
-  _serializableFields = ['mode'];
-  mode = 'yaml';
+class UpliftStep extends BaseContentStep {
 
   constructor(title) {
     super(title);
+    this.mode = 'yaml';
   }
 
   async _run(input) {
+    if (!await this.fetchContents(true)) {
+      return false;
+    }
     try {
       const result = await backendService.jsonUplift(input.json, this.contents)
         .then(r => this.result = Object.fromEntries(r))

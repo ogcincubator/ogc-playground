@@ -59,7 +59,7 @@
             </v-btn>
           </template>
           <v-list density="compact">
-            <v-list-item @click="exportPipeline" prepend-icon="mdi-file-export" :disabled="steps.length <= 2">
+            <v-list-item @click="exportPipeline" prepend-icon="mdi-file-export" :disabled="steps.length < 2">
               <v-list-item-title>
                 Export pipeline...
               </v-list-item-title>
@@ -291,7 +291,6 @@ export default {
       for (let i = 0; i < this.steps.length; i++) {
         this.activeStepIdx = i;
         const result = await this.runStep(i);
-        console.log("FULL", i, result, this.steps[i].output);
         if (!result) {
           return false;
         }
@@ -299,7 +298,6 @@ export default {
     },
     async runStep(idx, force = false) {
       const step = this.steps[idx], prevOutput = idx === 0 ? null : this.steps[idx - 1].output;
-      console.log("SINGLE", idx, step.type, prevOutput);
       const result = await step.run(prevOutput, force);
       this.saveStatus();
       return result;
@@ -323,7 +321,6 @@ export default {
       this.exportPipelineUrl = `${location.origin}${location.pathname}#?t=u&p=${content}`;
     },
     validatePipeline() {
-      console.log(this.steps);
       // Check that we have input step > !input && !output step* > output step
       if (!this.steps || this.steps.length < 2) {
         throw new Error('Pipeline has less than 2 steps');

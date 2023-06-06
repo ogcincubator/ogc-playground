@@ -32,7 +32,7 @@
   </v-row>
   <v-row v-else>
     <v-col>
-      <slot name="empty-text">No output is available for display.</slot>
+      <slot name="empty-text">No output is available for display (have you tried running the pipeline?).</slot>
     </v-col>
   </v-row>
 </template>
