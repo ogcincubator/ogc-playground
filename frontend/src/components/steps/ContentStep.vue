@@ -87,18 +87,6 @@ export default {
     };
   },
   methods: {
-    sourceLoaderChanged(v) {
-      let mode = 'json';
-      try {
-        JSON.parse(v);
-      } catch {
-        mode = 'yaml';
-      }
-      this.$emit('update', {
-        contents: v,
-        mode,
-      });
-    },
     async loadContentsFromUrl(force = false) {
       if (this.previewUrlLoading) {
         return;
@@ -113,7 +101,7 @@ export default {
 
 <style>
 textarea {
-  font-family: monospace;
+  font-family: monospace !important;
 }
 
 .v-dialog .v-overlay__content > .v-card > .v-card-text {

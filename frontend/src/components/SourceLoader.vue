@@ -49,7 +49,6 @@
   </div>
 </template>
 <script>
-import axios from "axios";
 import {useProfilesStore} from "@/stores/profiles";
 import {mapState} from "pinia";
 
@@ -115,47 +114,9 @@ export default {
         reader.readAsText(file);
       }
     },
-    loadFromUrl() {
-      this.urlLoading = true;
-      this.urlErrors = [];
-      axios.get(this.url, {
-        responseType: 'text'
-      })
-        .then(resp => {
-          console.log(resp);
-          this.$emit('contents', resp.data);
-          this.urlDialog = false;
-        })
-        .catch(err => {
-          let e;
-          if (err.message) {
-            e = err.message;
-          } else if (err.code) {
-            e = err.code;
-          } else if (err.response) {
-            e = err.response.statusText;
-          } else {
-            e = 'Unknown error';
-          }
-          this.urlErrors = [
-            `Error loading remote data: ${e}`
-          ];
-          console.log(err);
-        });
-    },
   },
   computed: {
     ...mapState(useProfilesStore, ['profiles']),
-    menuOptions() {
-      const opts = [];
-      if (this.showFile) {
-        opts.push({icon: 'file', text: 'File on your computer', click: 'showFilePicker'});
-      }
-      if (this.showUrl) {
-        opts.push({icon: 'web', text: 'URL', click: 'showLoadUrlDialog'})
-      }
-      return opts;
-    },
     filteredProfiles() {
       if (!this.profileRoles) {
         return [];

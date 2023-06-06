@@ -31,6 +31,8 @@ const revive = (obj) => {
   }
   const step = eval(`new ${obj.type}()`);
   step.serializableFields.filter(k => k !== 'type').forEach(k => step[k] = obj[k]);
+  step.pending = true;
+  step.modified = false;
   return step;
 };
 
