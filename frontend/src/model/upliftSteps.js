@@ -165,7 +165,8 @@ class BaseContentStep extends BaseStep {
   }
 
   async fetchContents(force = false) {
-    if (!this.modified && this.contentsFetched && !force) {
+    if (!this.modified && this.contentsFetched && !force
+      || this.inputSource === 'contents') {
       return true;
     }
     if (this._inputSource === 'url') {
